@@ -24,14 +24,26 @@ class SidlanData extends Component
 
     public int $page = 1;
 
-    public string $stage = 'all';
+    public string $search = '';
 
-    public string $component = '';
+    public string $cluster = 'all';
+
+    public string $region = 'all';
+
+    public string $stage = 'all';
 
     public array $stageOptions = [
         'all' => 'All',
         'Construction' => 'Construction',
         'Completed' => 'Completed',
+    ];
+
+    public array $clusterOptions = [
+        'all' => 'All',
+    ];
+
+    public array $regionOptions = [
+        'all' => 'All',
     ];
 
     public array $perPageOptions = [25, 50, 100];
@@ -85,12 +97,22 @@ class SidlanData extends Component
         $this->resetPage();
     }
 
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
     public function updatedStage(): void
     {
         $this->resetPage();
     }
 
-    public function updatedComponent(): void
+    public function updatedCluster(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedRegion(): void
     {
         $this->resetPage();
     }
@@ -107,6 +129,28 @@ class SidlanData extends Component
 
     public function render()
     {
+        // Extract unique clusters and regions from data for filter options
+        $clusters = ['all' => 'All'];
+        $regions = ['all' => 'All'];
+        foreach ($this->data as $item) {
+            $row = is_object($item) ? get_object_vars($item) : $item;
+            if (!empty($row['cluster'])) {
+                $clusters[$row['cluster']] = $row['cluster'];
+            }
+            if (!empty($row['region'])) {
+                // Extract text inside parentheses
+                $regionValue = $row['region'];
+                if (preg_match('/\((.*?)\)/', $regionValue, $matches)) {
+                    $regionValue = $matches[1];
+                }
+                $regions[$regionValue] = $regionValue;
+            }
+        }
+        asort($clusters);
+        asort($regions);
+        $this->clusterOptions = $clusters;
+        $this->regionOptions = $regions;
+
         // Apply filters
         $dataCollection = collect($this->data)->map(function ($item) {
             return is_array($item) ? (object) $item : $item;
@@ -114,20 +158,43 @@ class SidlanData extends Component
             // Convert to array for consistent access
             $row = is_object($item) ? get_object_vars($item) : $item;
 
+            // Filter by search (id, sp_id, project_name)
+            if (!empty($this->search)) {
+                $searchLower = strtolower($this->search);
+                $idMatch = isset($row['id']) && strtolower((string) $row['id']) === $searchLower;
+                $spIdMatch = isset($row['sp_id']) && strtolower((string) $row['sp_id']) === $searchLower;
+                $projectNameMatch = isset($row['project_name']) && strpos(strtolower($row['project_name']), $searchLower) !== false;
+                
+                if (!$idMatch && !$spIdMatch && !$projectNameMatch) {
+                    return false;
+                }
+            }
+
+            // Filter by cluster
+            if ($this->cluster !== 'all' && !empty($this->cluster)) {
+                $itemCluster = $row['cluster'] ?? '';
+                if (strtolower($itemCluster) !== strtolower($this->cluster)) {
+                    return false;
+                }
+            }
+
+            // Filter by region
+            if ($this->region !== 'all' && !empty($this->region)) {
+                $itemRegion = $row['region'] ?? '';
+                // Extract text inside parentheses for comparison
+                if (preg_match('/\((.*?)\)/', $itemRegion, $matches)) {
+                    $itemRegion = $matches[1];
+                }
+                if (strtolower($itemRegion) !== strtolower($this->region)) {
+                    return false;
+                }
+            }
+
             // Filter by stage (if not 'all')
             if ($this->stage !== 'all') {
                 $itemStage = strtolower($row['stage'] ?? $row['Status'] ?? '');
                 $filterStage = strtolower($this->stage);
                 if ($itemStage !== $filterStage) {
-                    return false;
-                }
-            }
-
-            // Filter by component
-            if (!empty($this->component)) {
-                $itemComponent = strtolower($row['component'] ?? '');
-                $filterComponent = strtolower($this->component);
-                if ($itemComponent !== $filterComponent) {
                     return false;
                 }
             }

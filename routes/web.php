@@ -1,17 +1,22 @@
 <?php
 
+use App\Http\Controllers\GeoMappingLoginController;
+use App\Livewire\SidlanData;
+use App\Livewire\SidlanProgress;
+use App\Livewire\SyncedAlbums;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 
-Route::get('/login', [\App\Http\Controllers\GeoMappingLoginController::class, 'create'])->name('login');
-Route::post('/login', [\App\Http\Controllers\GeoMappingLoginController::class, 'store']);
-Route::get('/geo-mapping-login', [\App\Http\Controllers\GeoMappingLoginController::class, 'create'])->name('geo-mapping.login');
+Route::get('/login', [GeoMappingLoginController::class, 'create'])->name('login');
+Route::post('/login', [GeoMappingLoginController::class, 'store']);
+Route::get('/geo-mapping-login', [GeoMappingLoginController::class, 'create'])->name('geo-mapping.login');
 
 Route::middleware(['auth'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
-    Route::get('/synced-albums', \App\Livewire\SyncedAlbums::class)->name('synced-albums');
-    Route::get('/sidlan-data', \App\Livewire\SidlanData::class)->name('sidlan-data');
+    Route::get('/synced-albums', SyncedAlbums::class)->name('synced-albums');
+    Route::get('/sidlan-data', SidlanData::class)->name('sidlan-data');
+    Route::get('/sidlan-progress', SidlanProgress::class)->name('sidlan-progress');
 });
 
 require __DIR__.'/settings.php';

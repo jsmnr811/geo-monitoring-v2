@@ -165,40 +165,21 @@ class GeoMappingAPIService
     /**
      * Get synchronized geotagged albums.
      */
-    public function getSyncedAlbums(string $spId, ?string $startDate = null, ?string $endDate = null): array
+    public function getSyncedAlbums(string $spId): array
     {
         $params = ['sp_id' => $spId];
 
-        if ($startDate) {
-            $params['start_date'] = $startDate;
-        }
-
-        if ($endDate) {
-            $params['end_date'] = $endDate;
-        }
-
-        // Authenticate first to get JWT token
-        $jwtToken = $this->authenticate();
-
-        if (! $jwtToken) {
-            return [
-                'success' => false,
-                'message' => 'Authentication failed',
-            ];
-        }
-
         \Log::info('SyncedAlbums API Request:', [
-            'endpoint' => '/geocamera-albums',
+            'endpoint' => '/sp-albums',
             'params' => $params,
         ]);
 
-        // Make request with JWT token
-        $response = Http::withToken($jwtToken)
-            ->withHeaders([
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ])
-            ->get(rtrim($this->baseUrl, '/').'/geocamera-albums', $params);
+        // Make request without JWT token
+        $response = Http::withHeaders([
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ])
+            ->get(rtrim($this->baseUrl, '/').'/sp-albums', $params);
 
         \Log::info('SyncedAlbums API Response:', [
             'status' => $response->status(),

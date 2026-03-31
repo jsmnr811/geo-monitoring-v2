@@ -18,22 +18,6 @@
                 />
             </div>
 
-            <div class="w-40">
-                <flux:input
-                    wire:model="startDate"
-                    label="Start Date"
-                    type="date"
-                />
-            </div>
-
-            <div class="w-40">
-                <flux:input
-                    wire:model="endDate"
-                    label="End Date"
-                    type="date"
-                />
-            </div>
-
             <div>
                 <flux:button variant="primary" type="submit" wire:loading.attr="disabled">
                     {{ __('Filter') }}
@@ -61,12 +45,14 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             @foreach ($albums as $album)
                 <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-                    @if ($album['cover_photo'])
-                        <img
-                            src="{{ $album['cover_photo'] }}"
-                            alt="{{ $album['album_name'] }}"
-                            class="w-full h-40 object-cover"
-                        >
+                    @if (!empty($album['cover_photo']))
+                        <a href="https://geomapping.da.gov.ph/prdp/project/geotag_map/{{ $album['album'] }}" target="_blank">
+                            <img
+                                src="https://geomapping.da.gov.ph/prdp/{{ $album['cover_photo'] }}"
+                                alt="{{ $album['description'] }}"
+                                class="w-full h-40 object-cover hover:opacity-90 transition-opacity"
+                            >
+                        </a>
                     @else
                         <div class="w-full h-40 bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
                             <svg class="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -77,7 +63,7 @@
 
                     <div class="p-4">
                         <h3 class="font-semibold text-gray-900 dark:text-white truncate">
-                            {{ $album['album_name'] }}
+                            {{ $album['description'] }}
                         </h3>
 
                         <div class="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
@@ -90,12 +76,12 @@
                                 {{ $album['sp_index'] }}
                             </p>
                             <p>
-                                <span class="font-medium">Photos:</span>
-                                {{ $album['photos'] }}
+                                <span class="font-medium">Geotags:</span>
+                                {{ $album['geotag_count'] }}
                             </p>
                             <p>
                                 <span class="font-medium">Date:</span>
-                                {{ $album['album_date'] }}
+                                {{ $album['report_date'] }}
                             </p>
                         </div>
                     </div>

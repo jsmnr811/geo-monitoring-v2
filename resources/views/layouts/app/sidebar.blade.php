@@ -21,6 +21,9 @@
                     <flux:sidebar.item icon="layout-grid" :href="route('sidlan-data')" :current="request()->routeIs('sidlan-data')" wire:navigate>
                         {{ __('SIDLAN Data') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="folder-git-2" :href="route('sidlan-progress')" :current="request()->routeIs('sidlan-progress')" wire:navigate>
+                        {{ __('SIDLAN Progress') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

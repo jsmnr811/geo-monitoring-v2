@@ -16,10 +16,6 @@ class SyncedAlbums extends Component
 
     public string $spId = '';
 
-    public ?string $startDate = null;
-
-    public ?string $endDate = null;
-
     public array $albums = [];
 
     public bool $loading = false;
@@ -30,8 +26,6 @@ class SyncedAlbums extends Component
     {
         return [
             'spId' => 'required|string',
-            'startDate' => 'nullable|date',
-            'endDate' => 'nullable|date|after_or_equal:startDate',
         ];
     }
 
@@ -43,9 +37,7 @@ class SyncedAlbums extends Component
         try {
             $service = new GeoMappingAPIService;
             $result = $service->getSyncedAlbums(
-                $this->spId,
-                $this->startDate,
-                $this->endDate
+                $this->spId
             );
 
             if (is_array($result) && isset($result['success'])) {
