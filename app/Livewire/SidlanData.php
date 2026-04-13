@@ -2,7 +2,9 @@
 
 namespace App\Livewire;
 
+use App\Services\GeoMappingAPIService;
 use App\Services\SidlanAPIService;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -32,6 +34,8 @@ class SidlanData extends Component
 
     public string $stage = 'all';
 
+    public array $albumStatus = [];
+
     public array $stageOptions = [
         'all' => 'All',
         'Construction' => 'Construction',
@@ -51,6 +55,45 @@ class SidlanData extends Component
     public function mount(): void
     {
         $this->fetchData();
+    }
+
+    /**
+     * Fetch album status for a specific SP ID.
+     */
+    public function getAlbumStatus(string $spId): array
+    {
+        try {
+            $service = new GeoMappingAPIService;
+            $result = $service->getSyncedAlbums($spId);
+
+            if (is_array($result) && isset($result['success']) && $result['success'] === true) {
+                $albums = $result['albums'] ?? [];
+                $hasBasedPhotos = false;
+                $hasCompleted = false;
+
+                foreach ($albums as $album) {
+                    $itemOfWork = isset($album['item_of_work']) ? strtolower($album['item_of_work']) : '';
+                    if ($itemOfWork === 'based photos') {
+                        $hasBasedPhotos = true;
+                    }
+                    if ($itemOfWork === 'completed') {
+                        $hasCompleted = true;
+                    }
+                }
+
+                return [
+                    'hasBasedPhotos' => $hasBasedPhotos,
+                    'hasCompleted' => $hasCompleted,
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::error('getAlbumStatus error: '.$e->getMessage());
+        }
+
+        return [
+            'hasBasedPhotos' => false,
+            'hasCompleted' => false,
+        ];
     }
 
     public function fetchData(): void
@@ -78,7 +121,7 @@ class SidlanData extends Component
                 }
             }
         } catch (\Throwable $e) {
-            \Log::error('SidlanData error: '.$e->getMessage());
+            Log::error('SidlanData error: '.$e->getMessage());
             $this->error = 'Something went wrong. Please try again.';
             $this->data = [];
         } finally {
@@ -134,10 +177,10 @@ class SidlanData extends Component
         $regions = ['all' => 'All'];
         foreach ($this->data as $item) {
             $row = is_object($item) ? get_object_vars($item) : $item;
-            if (!empty($row['cluster'])) {
+            if (! empty($row['cluster'])) {
                 $clusters[$row['cluster']] = $row['cluster'];
             }
-            if (!empty($row['region'])) {
+            if (! empty($row['region'])) {
                 // Extract text inside parentheses
                 $regionValue = $row['region'];
                 if (preg_match('/\((.*?)\)/', $regionValue, $matches)) {
@@ -159,19 +202,19 @@ class SidlanData extends Component
             $row = is_object($item) ? get_object_vars($item) : $item;
 
             // Filter by search (id, sp_id, project_name)
-            if (!empty($this->search)) {
+            if (! empty($this->search)) {
                 $searchLower = strtolower($this->search);
                 $idMatch = isset($row['id']) && strtolower((string) $row['id']) === $searchLower;
                 $spIdMatch = isset($row['sp_id']) && strtolower((string) $row['sp_id']) === $searchLower;
                 $projectNameMatch = isset($row['project_name']) && strpos(strtolower($row['project_name']), $searchLower) !== false;
-                
-                if (!$idMatch && !$spIdMatch && !$projectNameMatch) {
+
+                if (! $idMatch && ! $spIdMatch && ! $projectNameMatch) {
                     return false;
                 }
             }
 
             // Filter by cluster
-            if ($this->cluster !== 'all' && !empty($this->cluster)) {
+            if ($this->cluster !== 'all' && ! empty($this->cluster)) {
                 $itemCluster = $row['cluster'] ?? '';
                 if (strtolower($itemCluster) !== strtolower($this->cluster)) {
                     return false;
@@ -179,7 +222,7 @@ class SidlanData extends Component
             }
 
             // Filter by region
-            if ($this->region !== 'all' && !empty($this->region)) {
+            if ($this->region !== 'all' && ! empty($this->region)) {
                 $itemRegion = $row['region'] ?? '';
                 // Extract text inside parentheses for comparison
                 if (preg_match('/\((.*?)\)/', $itemRegion, $matches)) {

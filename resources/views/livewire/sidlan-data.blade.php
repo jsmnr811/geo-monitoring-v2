@@ -94,6 +94,10 @@
         'construction' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
         default => 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
         };
+
+        // Get album status - removed from list view, now shown in sp-albums page
+        // $spId = $rowArray['sp_id'] ?? '';
+        // $albumStatus = $this->getAlbumStatus($spId);
         @endphp
 
         <!-- Card -->
@@ -123,9 +127,10 @@
                             </p>
                         </div>
 
-                        <button class="text-xs text-primary-600 hover:underline">
+                        <a href="{{ route('sp-albums', ['spId' => $rowArray['sp_id'] ?? '', 'projectName' => $rowArray['project_name'] ?? '', 'stage' => $rowArray['stage'] ?? '']) }}"
+                            class="text-xs text-primary-600 hover:underline">
                             View
-                        </button>
+                        </a>
                     </div>
 
                     <!-- Meta (2 rows) -->
@@ -144,7 +149,6 @@
                             </span>
                         </div>
 
-                        <!-- Row 2 -->
                         <!-- Row 2 -->
                         <div class="flex flex-wrap items-center gap-1.5 text-xs">
 

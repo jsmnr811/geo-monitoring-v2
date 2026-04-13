@@ -1,4 +1,4 @@
-a<div class="p-6">
+<div class="p-6">
     <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">SIDLAN Progress</h1>
