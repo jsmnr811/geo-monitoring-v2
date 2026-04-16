@@ -2,6 +2,8 @@
 
 namespace App\Livewire;
 
+use App\Models\SidlanProgress;
+use App\Models\SidlanSyncedData;
 use App\Services\GeoMappingAPIService;
 use App\Services\SidlanAPIService;
 use Illuminate\Support\Facades\Log;
@@ -33,7 +35,11 @@ class SpAlbums extends Component
 
     public array $sidlanData = [];
 
+    public array $progressData = [];
+
     public array $analytics = [];
+
+    public array $progressAnalytics = [];
 
     public array $categories = [];
 
@@ -55,14 +61,29 @@ class SpAlbums extends Component
 
     public array $datesRow2 = ['annex.target_completion_date', 'annex.actual_completion_date'];
 
-    public function mount(string $spId, ?string $projectName = '', ?string $stage = ''): void
+    public array $albumsByMonth = [];
+
+    public function mount(string $spId): void
     {
         $this->spId = $spId;
-        $this->projectName = $projectName ?? '';
-        $this->stage = $stage ?? '';
-        $this->fetchAlbums();
+
         $this->fetchSidlanData();
+
+        if (empty($this->sidlanData)) {
+            $this->error = 'Subproject not found';
+
+            return;
+        }
+
+        // derive everything from SIDLAN data only
+        $this->projectName = $this->sidlanData['project_name'] ?? '';
+        $this->stage = $this->sidlanData['stage'] ?? '';
+
+        $this->fetchAlbums();
+        $this->fetchProgressData();
+
         $this->computeAnalytics();
+        $this->computeProgressAnalytics();
     }
 
     public function fetchAlbums(): void
@@ -145,28 +166,36 @@ class SpAlbums extends Component
     public function fetchSidlanData(): void
     {
         try {
-            $service = new SidlanAPIService;
-            $result = $service->loadSyncedSidlanData();
+            // Use local synced data instead of API calls to avoid timeouts
+            $syncedRecord = SidlanSyncedData::whereJsonContains('data->sp_id', $this->spId)->first();
 
-            if (is_array($result) && isset($result['success']) && $result['success'] === true) {
-                $allData = $result['data'] ?? $result['result'] ?? [];
+            if ($syncedRecord) {
+                $this->sidlanData = $syncedRecord->data ?? [];
+            } else {
+                // Fallback to API if no local data found
+                $service = new SidlanAPIService;
+                $result = $service->loadSyncedSidlanData();
 
-                // Find the specific record for this sp_id
-                $this->sidlanData = [];
-                foreach ($allData as $item) {
-                    $row = is_object($item) ? get_object_vars($item) : $item;
-                    if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
-                        $this->sidlanData = $row;
-                        break;
+                if (is_array($result) && isset($result['success']) && $result['success'] === true) {
+                    $allData = $result['data'] ?? $result['result'] ?? [];
+
+                    // Find the specific record for this sp_id
+                    $this->sidlanData = [];
+                    foreach ($allData as $item) {
+                        $row = is_object($item) ? get_object_vars($item) : $item;
+                        if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
+                            $this->sidlanData = $row;
+                            break;
+                        }
                     }
-                }
-            } elseif (is_array($result)) {
-                // Handle direct array response
-                foreach ($result as $item) {
-                    $row = is_object($item) ? get_object_vars($item) : $item;
-                    if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
-                        $this->sidlanData = $row;
-                        break;
+                } elseif (is_array($result)) {
+                    // Handle direct array response
+                    foreach ($result as $item) {
+                        $row = is_object($item) ? get_object_vars($item) : $item;
+                        if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
+                            $this->sidlanData = $row;
+                            break;
+                        }
                     }
                 }
             }
@@ -176,16 +205,153 @@ class SpAlbums extends Component
         }
     }
 
+    public function fetchProgressData(): void
+    {
+        try {
+            $this->progressData = [];
+
+            $sidlanId = $this->sidlanData['id'] ?? null;
+
+            if (! $sidlanId) {
+                return;
+            }
+
+            $service = new SidlanAPIService;
+            $result = $service->getProgress();
+
+            if (! is_array($result)) {
+                return;
+            }
+
+            $data = $result['data'] ?? [];
+
+            $project = $data[$sidlanId] ?? null;
+
+            if (! $project) {
+                return;
+            }
+
+            // Collect all unique months from both progress accomplishmentDates and album report_dates
+            $allMonths = [];
+
+            // From progress accomplishmentDates
+            $progressByMonth = [];
+            foreach (($project['accomplishmentDates'] ?? []) as $date) {
+                $month = date('Y-m', strtotime($date));
+                $allMonths[$month] = true;
+                $progressByMonth[$month] = true;
+            }
+
+            // From album report_dates
+            foreach ($this->allAlbums as $album) {
+                if (($album['sp_id'] ?? null) !== $this->spId) {
+                    continue;
+                }
+                if (empty($album['report_date'])) {
+                    continue;
+                }
+                $timestamp = strtotime($album['report_date']);
+                if (! $timestamp) {
+                    continue;
+                }
+                $monthKey = date('Y-m', $timestamp);
+                $allMonths[$monthKey] = true;
+            }
+
+            $months = array_keys($allMonths);
+
+            // Sort latest month first
+            usort($months, function ($a, $b) {
+                return strtotime($b) <=> strtotime($a);
+            });
+
+            // Create month data with actual
+            $monthData = [];
+            foreach ($months as $month) {
+                $actual = 0;
+
+                // Check if there's progress for this month
+                $progressDate = null;
+                foreach (($project['accomplishmentDates'] ?? []) as $date) {
+                    if (date('Y-m', strtotime($date)) === $month) {
+                        $progressDate = $date;
+                        break;
+                    }
+                }
+
+                if ($progressDate) {
+                    $report = $project['progressReport'][$progressDate] ?? [];
+                    $actualValue = $report['actual'] ?? 0;
+                    if (is_numeric($actualValue)) {
+                        $actual = (float) $actualValue;
+                    }
+                }
+
+                $monthData[] = [
+                    'month' => $month,
+                    'actual' => $actual,
+                    'has_progress' => isset($progressByMonth[$month]),
+                ];
+            }
+
+            // Group albums by month
+            $groupedAlbums = $this->mapAlbumsByMonth($this->allAlbums, $this->spId);
+
+            // Add albums to each month
+            foreach ($monthData as &$month) {
+                $month['albums'] = $groupedAlbums[$month['month']] ?? [];
+            }
+
+            $this->progressData = [
+                'sp_id' => $this->spId,
+                'months' => $monthData,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('SpAlbums fetchProgressData error: '.$e->getMessage());
+            $this->progressData = [];
+        }
+    }
+
+    protected function mapAlbumsByMonth(array $albums, string $spId): array
+    {
+        $grouped = [];
+
+        foreach ($albums as $album) {
+
+            // ✅ FIX: use sp_id (not sp_index)
+            if (($album['sp_id'] ?? null) !== $spId) {
+                continue;
+            }
+
+            if (empty($album['report_date'])) {
+                continue;
+            }
+
+            $timestamp = strtotime($album['report_date']);
+            if (! $timestamp) {
+                continue;
+            }
+
+            $monthKey = date('Y-m', $timestamp);
+
+            $grouped[$monthKey][] = $album;
+        }
+
+        krsort($grouped);
+
+        return $grouped;
+    }
+
     private function computeAnalytics(): void
     {
         $this->analytics = [];
 
         // Analyze the SidlanData for this SP ID
-        if (!empty($this->sidlanData)) {
+        if (! empty($this->sidlanData)) {
             $compliance = [
                 'completeness' => 0,
                 'total_checks' => 0,
-                'issues' => []
+                'issues' => [],
             ];
 
             $stage = strtolower($this->sidlanData['stage'] ?? '');
@@ -211,7 +377,7 @@ class SpAlbums extends Component
                 'contractor_supplier' => 'Contractor/Supplier',
                 'latitude' => 'Latitude',
                 'longitude' => 'Longitude',
-                'component' => 'Component'
+                'component' => 'Component',
             ];
             $completenessFields = array_merge($completenessFields, $mainFields);
 
@@ -232,7 +398,7 @@ class SpAlbums extends Component
                     'annex.target_start_date' => 'Target Start Date',
                     'annex.actual_start_date' => 'Actual Start Date',
                     'annex.target_completion_date' => 'Target Completion Date',
-                    'annex.actual_completion_date' => 'Actual Completion Date'
+                    'annex.actual_completion_date' => 'Actual Completion Date',
                 ];
                 $completenessFields = array_merge($completenessFields, $annexFields);
             }
@@ -252,7 +418,7 @@ class SpAlbums extends Component
                     'package.contract_duration_to' => 'Contract To',
                     'package.financial_capacity' => 'Financial Capacity',
                     'package.bidded_amount' => 'Bidded Amount',
-                    'package.awarded_cost' => 'Awarded Cost'
+                    'package.awarded_cost' => 'Awarded Cost',
                 ];
                 $completenessFields = array_merge($completenessFields, $packageFields);
             }
@@ -261,16 +427,24 @@ class SpAlbums extends Component
 
             // Add physical percentage check for completed projects
             if ($stage === 'completed') {
-                $statusText = strtolower($this->sidlanData['status'] ?? '');
-                if (strpos($statusText, '100%') !== false || strpos($statusText, 'completed') !== false) {
-                    // Consider this as 100% complete
-                } else {
-                    // Try to extract percentage from status
-                    preg_match('/(\d+(?:\.\d+)?)%/', $statusText, $matches);
-                    $physicalPct = isset($matches[1]) ? (float) $matches[1] : null;
-                    if ($physicalPct !== null && $physicalPct !== 100.0) {
-                        $compliance['issues'][] = "Physical Percentage should be 100% for completed projects (current: {$physicalPct}%)";
+                // Get latest cumulative progress from SidlanProgress model
+                $progressReport = $this->progressData['progressReport'] ?? [];
+                $accomplishmentDates = $this->progressData['accomplishmentDates'] ?? [];
+
+                $latestProgress = null;
+                if (! empty($accomplishmentDates) && ! empty($progressReport)) {
+                    // Get the last date with actual progress
+                    foreach (array_reverse($accomplishmentDates) as $date) {
+                        $report = $progressReport[$date] ?? [];
+                        if (isset($report['cummu_progress']) && is_numeric($report['cummu_progress'])) {
+                            $latestProgress = (float) $report['cummu_progress'];
+                            break;
+                        }
                     }
+                }
+
+                if ($latestProgress !== null && $latestProgress !== 100.0) {
+                    $compliance['issues'][] = "Physical Percentage should be 100% for completed projects (current: {$latestProgress}%)";
                 }
             }
 
@@ -297,12 +471,12 @@ class SpAlbums extends Component
                         'annex.contract_duration_to',
                         'annex.actual_completion_date',
                         'package.contract_duration_from',
-                        'package.contract_duration_to'
+                        'package.contract_duration_to',
                     ];
                     $canBeNull = in_array($field, $nullableFields);
                 }
 
-                $isMissing = ($value === null || $value === '') && !$canBeNull;
+                $isMissing = ($value === null || $value === '') && ! $canBeNull;
 
                 if ($isMissing) {
                     $compliance['issues'][] = "Missing {$label}";
@@ -327,7 +501,7 @@ class SpAlbums extends Component
                 'stage' => 'Stage',
                 'status' => 'Status',
                 'fund_source' => 'Fund Source',
-                'component' => 'Component'
+                'component' => 'Component',
             ],
             'Location Details' => [
                 'latitude' => 'Latitude',
@@ -335,7 +509,7 @@ class SpAlbums extends Component
                 'cluster' => 'Cluster',
                 'region' => 'Region',
                 'province' => 'Province',
-                'municipality' => 'Municipality'
+                'municipality' => 'Municipality',
             ],
             'Financial Information' => [
                 'indicative_cost' => 'Indicative Cost',
@@ -346,7 +520,7 @@ class SpAlbums extends Component
                 'package.package_cost' => 'Package Cost',
                 'package.financial_capacity' => 'Financial Capacity',
                 'package.bidded_amount' => 'Bidded Amount',
-                'package.awarded_cost' => 'Awarded Cost'
+                'package.awarded_cost' => 'Awarded Cost',
             ],
             'Project Details' => [
                 'annex.sp_description' => 'SP Description',
@@ -356,7 +530,7 @@ class SpAlbums extends Component
                 'annex.linear_meter' => 'Linear Meter',
                 'annex.validation_status' => 'Validation Status',
                 'annex.construction_duration' => 'Construction Duration',
-                'package.procurement_mode' => 'Procurement Mode'
+                'package.procurement_mode' => 'Procurement Mode',
             ],
             'Dates & Timeline' => [
                 'date_validated' => 'Date Validated',
@@ -365,8 +539,8 @@ class SpAlbums extends Component
                 'annex.target_completion_date' => 'Target Completion Date',
                 'annex.actual_completion_date' => 'Actual Completion Date',
                 'package.contract_duration_from' => 'Contract From',
-                'package.contract_duration_to' => 'Contract To'
-            ]
+                'package.contract_duration_to' => 'Contract To',
+            ],
         ];
 
         // Filtered field labels
@@ -377,7 +551,7 @@ class SpAlbums extends Component
         if ($stage === 'construction') {
             $excludeFields = [
                 'package.contract_duration_from',
-                'package.contract_duration_to'
+                'package.contract_duration_to',
             ];
             $this->filteredFieldLabels = array_diff_key($this->filteredFieldLabels, array_flip($excludeFields));
         }
@@ -387,7 +561,7 @@ class SpAlbums extends Component
         $dataItem = [$this->sidlanData]; // Treat as single item array for consistency
         foreach ($dataItem as $item) {
             foreach ($this->filteredFieldLabels as $field => $label) {
-                if (!isset($this->fieldStatus[$field])) {
+                if (! isset($this->fieldStatus[$field])) {
                     $this->fieldStatus[$field] = ['present' => 0, 'missing' => 0, 'values' => []];
                 }
 
@@ -406,13 +580,65 @@ class SpAlbums extends Component
                     $this->fieldStatus[$field]['present']++;
                     // Truncate long values for display
                     $displayValue = is_string($value) && strlen($value) > 50
-                        ? substr($value, 0, 50) . '...'
+                        ? substr($value, 0, 50).'...'
                         : $value;
                     $this->fieldStatus[$field]['values'][] = $displayValue;
                 } else {
                     $this->fieldStatus[$field]['missing']++;
                 }
             }
+        }
+    }
+
+    private function computeProgressAnalytics(): void
+    {
+        $this->progressAnalytics = [
+            'total_months_with_progress' => 0,
+            'progress_with_albums' => 0,
+            'progress_months_with_500_geotags' => 0,
+            'total_geotags' => 0,
+            'required_geotags' => 0,
+            'geotag_compliance' => 0,
+        ];
+
+        foreach ($this->progressData['months'] ?? [] as $month) {
+
+            $actual = $month['actual'] ?? null;
+
+            // only valid numeric progress
+            if (! is_numeric($actual) || $actual <= 0) {
+                continue;
+            }
+
+            $this->progressAnalytics['total_months_with_progress']++;
+
+            $albums = $month['albums'] ?? [];
+
+            if (! empty($albums)) {
+
+                $this->progressAnalytics['progress_with_albums']++;
+
+                $totalGeotags = 0;
+
+                foreach ($albums as $album) {
+                    $totalGeotags += (int) ($album['geotag_count'] ?? 0);
+                }
+
+                $this->progressAnalytics['total_geotags'] += $totalGeotags;
+
+                if ($totalGeotags >= 500) {
+                    $this->progressAnalytics['progress_months_with_500_geotags']++;
+                }
+            }
+        }
+
+        $this->progressAnalytics['required_geotags'] = $this->progressAnalytics['total_months_with_progress'] * 500;
+
+        if ($this->progressAnalytics['required_geotags'] > 0) {
+            $this->progressAnalytics['geotag_compliance'] = round(
+                ($this->progressAnalytics['total_geotags'] / $this->progressAnalytics['required_geotags']) * 100,
+                2
+            );
         }
     }
 

@@ -127,10 +127,12 @@
                             </p>
                         </div>
 
-                        <a href="{{ route('sp-albums', ['spId' => $rowArray['sp_id'] ?? '', 'projectName' => $rowArray['project_name'] ?? '', 'stage' => $rowArray['stage'] ?? '']) }}"
-                            class="text-xs text-primary-600 hover:underline">
-                            View
-                        </a>
+                        @if (!empty($rowArray['sp_id']))
+                            <a href="{{ route('sp-albums', ['spId' => $rowArray['sp_id'], 'projectName' => $rowArray['project_name'] ?? '', 'stage' => $rowArray['stage'] ?? '']) }}"
+                                class="text-xs text-primary-600 hover:underline">
+                                View
+                            </a>
+                        @endif
                     </div>
 
                     <!-- Meta (2 rows) -->

@@ -142,4 +142,30 @@ class SidlanAPIService
 
         return $result;
     }
+
+    public function getAllSyncedSidlanData(): array
+    {
+        $response = Http::withHeaders([
+            'Accept' => 'application/json',
+        ])
+            ->get($this->baseUrl.'/project/load_synced_sidlan_data');
+
+        if (! $response->successful()) {
+            return [
+                'success' => false,
+                'message' => 'API request failed ('.$response->status().')',
+            ];
+        }
+
+        $result = $response->json();
+
+        if (! $result) {
+            return [
+                'success' => false,
+                'message' => 'Invalid API response',
+            ];
+        }
+
+        return $result;
+    }
 }

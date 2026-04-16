@@ -25,8 +25,14 @@ class SyncedAlbums extends Component
     protected function rules(): array
     {
         return [
-            'spId' => 'required|string',
+            'spId' => 'nullable|string',
         ];
+    }
+
+    public function mount($spId = null): void
+    {
+        $this->spId = $spId ?? '';
+        $this->fetchAlbums();
     }
 
     public function fetchAlbums(): void
