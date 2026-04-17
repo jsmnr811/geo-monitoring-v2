@@ -2,11 +2,12 @@
 
 namespace App\Livewire;
 
-use App\Models\SidlanProgress;
-use App\Models\SidlanSyncedData;
+use App\Models\DataQualityJustification;
 use App\Services\GeoMappingAPIService;
 use App\Services\SidlanAPIService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -41,7 +42,11 @@ class SpAlbums extends Component
 
     public array $progressAnalytics = [];
 
+    public array $monthsWithProgressNoAlbum = [];
+
     public array $categories = [];
+
+    public string $alertMessage = '';
 
     public array $fieldStatus = [];
 
@@ -63,6 +68,18 @@ class SpAlbums extends Component
 
     public array $albumsByMonth = [];
 
+    public array $justifications = [];
+
+    public array $auditTrail = [];
+
+    public bool $showJustificationModal = false;
+
+    public bool $showRatingDetails = false;
+
+    public string $justifyingIssueType = '';
+
+    public string $justificationText = '';
+
     public function mount(string $spId): void
     {
         $this->spId = $spId;
@@ -82,8 +99,28 @@ class SpAlbums extends Component
         $this->fetchAlbums();
         $this->fetchProgressData();
 
-        $this->computeAnalytics();
+        $this->loadJustifications();
+        $this->loadAuditTrail();
         $this->computeProgressAnalytics();
+        $this->computeAnalytics();
+
+        // Check for fix attempt
+        if (Session::has('fix_attempted')) {
+            Session::forget('fix_attempted');
+            $spId = $this->sidlanData['sp_id'] ?? 'unknown';
+            $complianceIssues = $this->analytics[$spId]['issues'] ?? [];
+            $albumIssues = [];
+            if (! $this->hasBasedPhotos && ! in_array('based_photos_missing', $this->justifications)) {
+                $albumIssues[] = 'based_photos_missing';
+            }
+            if (strtolower($this->stage) === 'completed' && ! $this->hasCompleted && ! in_array('completed_album_missing', $this->justifications)) {
+                $albumIssues[] = 'completed_album_missing';
+            }
+            if (! empty($complianceIssues) || ! empty($albumIssues)) {
+                $this->alertMessage = 'No updated data has been fetched. Check SIDLAN or GMS if the data has been updated.';
+                $this->js('alert("'.addslashes($this->alertMessage).'")');
+            }
+        }
     }
 
     public function fetchAlbums(): void
@@ -166,36 +203,30 @@ class SpAlbums extends Component
     public function fetchSidlanData(): void
     {
         try {
-            // Use local synced data instead of API calls to avoid timeouts
-            $syncedRecord = SidlanSyncedData::whereJsonContains('data->sp_id', $this->spId)->first();
+            // Fetch data directly from API
+            $service = new SidlanAPIService;
+            $result = $service->loadSyncedSidlanData();
 
-            if ($syncedRecord) {
-                $this->sidlanData = $syncedRecord->data ?? [];
-            } else {
-                // Fallback to API if no local data found
-                $service = new SidlanAPIService;
-                $result = $service->loadSyncedSidlanData();
+            if (is_array($result) && isset($result['success']) && $result['success'] === true) {
+                $allData = $result['data'] ?? $result['result'] ?? [];
 
-                if (is_array($result) && isset($result['success']) && $result['success'] === true) {
-                    $allData = $result['data'] ?? $result['result'] ?? [];
-
-                    // Find the specific record for this sp_id
-                    $this->sidlanData = [];
-                    foreach ($allData as $item) {
-                        $row = is_object($item) ? get_object_vars($item) : $item;
-                        if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
-                            $this->sidlanData = $row;
-                            break;
-                        }
+                // Find the specific record for this sp_id
+                $this->sidlanData = [];
+                foreach ($allData as $item) {
+                    $row = is_object($item) ? get_object_vars($item) : $item;
+                    if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
+                        $this->sidlanData = $row;
+                        break;
                     }
-                } elseif (is_array($result)) {
-                    // Handle direct array response
-                    foreach ($result as $item) {
-                        $row = is_object($item) ? get_object_vars($item) : $item;
-                        if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
-                            $this->sidlanData = $row;
-                            break;
-                        }
+                }
+            } elseif (is_array($result)) {
+                // Handle direct array response
+                $this->sidlanData = [];
+                foreach ($result as $item) {
+                    $row = is_object($item) ? get_object_vars($item) : $item;
+                    if (isset($row['sp_id']) && $row['sp_id'] === $this->spId) {
+                        $this->sidlanData = $row;
+                        break;
                     }
                 }
             }
@@ -312,6 +343,31 @@ class SpAlbums extends Component
         }
     }
 
+    protected function loadJustifications(): void
+    {
+        $this->justifications = DataQualityJustification::where('sp_id', $this->spId)->pluck('issue_type')->toArray();
+    }
+
+    protected function loadAuditTrail(): void
+    {
+        $this->auditTrail = DataQualityJustification::where('sp_id', $this->spId)
+            ->with('user:id,name')
+            ->withTrashed()
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($justification) {
+                return [
+                    'id' => $justification->id,
+                    'issue_type' => $justification->issue_type,
+                    'justification' => $justification->justification_text,
+                    'user' => $justification->user->name ?? 'Unknown',
+                    'timestamp' => $justification->created_at->format('Y-m-d H:i:s'),
+                    'deleted_at' => $justification->deleted_at,
+                ];
+            })
+            ->toArray();
+    }
+
     protected function mapAlbumsByMonth(array $albums, string $spId): array
     {
         $grouped = [];
@@ -356,7 +412,7 @@ class SpAlbums extends Component
 
             $stage = strtolower($this->sidlanData['stage'] ?? '');
 
-            // Completeness checks - Check ALL available fields from SidlanData
+            // Completeness checks - All SIDLAN fields with critical having 2x weight
             $completenessFields = [];
 
             // Main level fields (always present)
@@ -381,7 +437,7 @@ class SpAlbums extends Component
             ];
             $completenessFields = array_merge($completenessFields, $mainFields);
 
-            // Annex fields (if annex exists) - only unique fields not in main
+            // Annex fields (if annex exists)
             if (isset($this->sidlanData['annex'])) {
                 $annexFields = [
                     'annex.sp_description' => 'SP Description',
@@ -403,7 +459,7 @@ class SpAlbums extends Component
                 $completenessFields = array_merge($completenessFields, $annexFields);
             }
 
-            // Package fields (if package exists) - only unique fields not in main
+            // Package fields (if package exists)
             if (isset($this->sidlanData['package'])) {
                 $packageFields = [
                     'package.package_name' => 'Package Name',
@@ -425,32 +481,13 @@ class SpAlbums extends Component
 
             $this->completenessFields = $completenessFields;
 
-            // Add physical percentage check for completed projects
-            if ($stage === 'completed') {
-                // Get latest cumulative progress from SidlanProgress model
-                $progressReport = $this->progressData['progressReport'] ?? [];
-                $accomplishmentDates = $this->progressData['accomplishmentDates'] ?? [];
-
-                $latestProgress = null;
-                if (! empty($accomplishmentDates) && ! empty($progressReport)) {
-                    // Get the last date with actual progress
-                    foreach (array_reverse($accomplishmentDates) as $date) {
-                        $report = $progressReport[$date] ?? [];
-                        if (isset($report['cummu_progress']) && is_numeric($report['cummu_progress'])) {
-                            $latestProgress = (float) $report['cummu_progress'];
-                            break;
-                        }
-                    }
-                }
-
-                if ($latestProgress !== null && $latestProgress !== 100.0) {
-                    $compliance['issues'][] = "Physical Percentage should be 100% for completed projects (current: {$latestProgress}%)";
-                }
-            }
+            // Critical fields with higher weight
+            $criticalFields = ['sp_id', 'project_name', 'project_type', 'annex.cost_nol_1', 'latitude', 'longitude', 'contractor_supplier'];
 
             // Check all fields
             foreach ($completenessFields as $field => $label) {
-                $compliance['total_checks']++;
+                $weight = in_array($field, $criticalFields) ? 2 : 1;
+                $compliance['total_checks'] += $weight;
 
                 // Handle nested fields
                 if (strpos($field, 'annex.') === 0) {
@@ -478,16 +515,142 @@ class SpAlbums extends Component
 
                 $isMissing = ($value === null || $value === '') && ! $canBeNull;
 
+                $issue_type = 'missing_'.preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($field));
+
                 if ($isMissing) {
-                    $compliance['issues'][] = "Missing {$label}";
+                    if (! in_array($issue_type, $this->justifications)) {
+                        $compliance['issues'][] = ['type' => $issue_type, 'text' => "Missing {$label}"];
+                    } else {
+                        // Justified missing fields get full credit
+                        $compliance['completeness'] += $weight;
+                    }
                 } else {
-                    $compliance['completeness']++;
+                    $compliance['completeness'] += $weight;
                 }
             }
 
-            // Calculate percentage (only completeness now)
-            $compliance['completeness_pct'] = $compliance['total_checks'] > 0 ? round(($compliance['completeness'] / $compliance['total_checks']) * 100) : 0;
-            $compliance['overall_pct'] = $compliance['completeness_pct'];
+            // Calculate separate completeness percentages
+            $critical_fields_keys = ['sp_id', 'project_name', 'project_type', 'annex.cost_nol_1', 'latitude', 'longitude', 'contractor_supplier'];
+            $critical_present = 0;
+            $critical_total = count($critical_fields_keys);
+            $other_present = 0;
+            $other_total = count($completenessFields) - $critical_total;
+
+            foreach ($completenessFields as $field => $label) {
+                $is_critical = in_array($field, $critical_fields_keys);
+
+                // Handle nested fields
+                if (strpos($field, 'annex.') === 0) {
+                    $nestedField = str_replace('annex.', '', $field);
+                    $value = $this->sidlanData['annex'][$nestedField] ?? null;
+                } elseif (strpos($field, 'package.') === 0) {
+                    $nestedField = str_replace('package.', '', $field);
+                    $value = $this->sidlanData['package'][$nestedField] ?? null;
+                } else {
+                    $value = $this->sidlanData[$field] ?? null;
+                }
+
+                // Special handling for Construction stage - some fields can be null
+                $canBeNull = false;
+                if ($stage === 'construction') {
+                    $nullableFields = [
+                        'annex.contract_duration_from',
+                        'annex.contract_duration_to',
+                        'annex.actual_completion_date',
+                        'package.contract_duration_from',
+                        'package.contract_duration_to',
+                    ];
+                    $canBeNull = in_array($field, $nullableFields);
+                }
+
+                $isMissing = ($value === null || $value === '') && ! $canBeNull;
+                $issue_type = 'missing_'.preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($field));
+                $is_present = ! $isMissing || in_array($issue_type, $this->justifications);
+
+                if ($is_critical) {
+                    if ($is_present) {
+                        $critical_present++;
+                    }
+                } else {
+                    if ($is_present) {
+                        $other_present++;
+                    }
+                }
+            }
+
+            $compliance['critical_pct'] = $critical_total > 0 ? round(($critical_present / $critical_total) * 100) : 0;
+            $compliance['other_pct'] = $other_total > 0 ? round(($other_present / $other_total) * 100) : 0;
+
+            // Weighted completeness percentage as per spec: 70% critical + 30% other
+            $compliance['completeness_pct'] = round($compliance['critical_pct'] * 0.7 + $compliance['other_pct'] * 0.3, 1);
+
+            // Add physical percentage check for completed projects
+            if ($stage === 'completed') {
+                $progressReport = $this->progressData['progressReport'] ?? [];
+                $accomplishmentDates = $this->progressData['accomplishmentDates'] ?? [];
+
+                $latestProgress = null;
+                if (! empty($accomplishmentDates) && ! empty($progressReport)) {
+                    // Get the last date with actual progress
+                    foreach (array_reverse($accomplishmentDates) as $date) {
+                        $report = $progressReport[$date] ?? [];
+                        if (isset($report['cummu_progress']) && is_numeric($report['cummu_progress'])) {
+                            $latestProgress = (float) $report['cummu_progress'];
+                            break;
+                        }
+                    }
+                }
+
+                if ($latestProgress !== null && $latestProgress !== 100.0 && ! in_array('physical_percentage', $this->justifications)) {
+                    $compliance['issues'][] = ['type' => 'physical_percentage', 'text' => "Physical Percentage should be 100% for completed projects (current: {$latestProgress}%)"];
+                }
+            }
+
+            // GMS Album Compliance
+            if ($this->progressAnalytics['progress_months_with_500_geotags'] > 0 && ! in_array('gms_album_compliance', $this->justifications)) {
+                $compliance['issues'][] = ['type' => 'gms_album_compliance', 'text' => 'GMS Album Compliance: Albums with 500 or more geotags found'];
+            }
+
+            // Missing albums for months with progress
+            foreach ($this->monthsWithProgressNoAlbum as $month) {
+                if (! in_array('missing_album_'.$month, $this->justifications)) {
+                    $date = \DateTime::createFromFormat('Y-m', $month);
+                    $formattedMonth = $date ? $date->format('F Y') : $month;
+                    $compliance['issues'][] = ['type' => 'missing_album_'.$month, 'text' => 'Missing album for '.$formattedMonth];
+                }
+            }
+
+            // Calculate album compliance score (70% weight)
+            $album_score = 0;
+
+            // Based Photos: 15% if present or justified
+            $based_ok = $this->hasBasedPhotos || in_array('based_photos_missing', $this->justifications);
+            if ($based_ok) {
+                $album_score += 15;
+            }
+
+            // Completed Album: 25% if present/not required or justified
+            $completed_ok = ($this->hasCompleted || $stage !== 'completed') || in_array('completed_album_missing', $this->justifications);
+            if ($completed_ok) {
+                $album_score += 25;
+            }
+
+            // No albums with 500+ geotags in progress months: 30% if compliant or justified
+            $geotag_ok = $this->progressAnalytics['progress_months_with_500_geotags'] == 0 || in_array('gms_album_compliance', $this->justifications);
+            if ($geotag_ok) {
+                $album_score += 30;
+            }
+
+            // Progress compliance (albums for progress months): 30% if all progress months have albums or justified
+            $progress_ok = empty(array_filter($this->monthsWithProgressNoAlbum, fn ($month) => ! in_array('missing_album_'.$month, $this->justifications)));
+            if ($progress_ok) {
+                $album_score += 30;
+            }
+
+            $compliance['album_score'] = $album_score;
+
+            // Fixed weighting: 30% SIDLAN completeness + 70% album compliance
+            $compliance['overall_pct'] = round($compliance['completeness_pct'] * 0.3 + $album_score * 0.7, 1);
 
             $this->analytics[$this->sidlanData['sp_id'] ?? 'unknown'] = $compliance;
         }
@@ -502,6 +665,7 @@ class SpAlbums extends Component
                 'status' => 'Status',
                 'fund_source' => 'Fund Source',
                 'component' => 'Component',
+                'contractor_supplier' => 'Contractor/Supplier',
             ],
             'Location Details' => [
                 'latitude' => 'Latitude',
@@ -601,6 +765,8 @@ class SpAlbums extends Component
             'geotag_compliance' => 0,
         ];
 
+        $this->monthsWithProgressNoAlbum = [];
+
         foreach ($this->progressData['months'] ?? [] as $month) {
 
             $actual = $month['actual'] ?? null;
@@ -629,6 +795,8 @@ class SpAlbums extends Component
                 if ($totalGeotags >= 500) {
                     $this->progressAnalytics['progress_months_with_500_geotags']++;
                 }
+            } else {
+                $this->monthsWithProgressNoAlbum[] = $month['month'];
             }
         }
 
@@ -640,6 +808,55 @@ class SpAlbums extends Component
                 2
             );
         }
+    }
+
+    public function justifyIssue(string $type): void
+    {
+        $this->justifyingIssueType = $type;
+        $this->justificationText = '';
+    }
+
+    public function saveJustification(): void
+    {
+        if (empty(trim($this->justificationText))) {
+            // Add error message if needed
+            return;
+        }
+
+        DataQualityJustification::create([
+            'sp_id' => $this->spId,
+            'issue_type' => $this->justifyingIssueType,
+            'justification_text' => $this->justificationText,
+            'user_id' => Auth::id(),
+        ]);
+
+        $this->loadJustifications();
+        $this->loadAuditTrail();
+        $this->computeAnalytics(); // Recompute to update issues
+    }
+
+    public function deleteJustification(int $justificationId): void
+    {
+        $justification = DataQualityJustification::find($justificationId);
+
+        if ($justification && $justification->sp_id === $this->spId) {
+            $justification->delete(); // Soft delete
+            $this->loadJustifications();
+            $this->loadAuditTrail();
+            $this->computeAnalytics();
+        }
+    }
+
+    public function toggleRatingDetails(): void
+    {
+        $this->showRatingDetails = ! $this->showRatingDetails;
+    }
+
+    public function fixIssue(string $type): void
+    {
+        // Mark that fix was attempted and reload the page for external fix
+        Session::put('fix_attempted', true);
+        $this->js('window.location.reload()');
     }
 
     public function render()

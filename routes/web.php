@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\GeoMappingLoginController;
 use App\Livewire\SidlanData;
-use App\Livewire\SidlanProgress;
 use App\Livewire\SpAlbums;
 use App\Livewire\SyncedAlbums;
 use Illuminate\Support\Facades\Route;
@@ -15,9 +14,10 @@ Route::get('/geo-mapping-login', [GeoMappingLoginController::class, 'create'])->
 
 Route::middleware(['auth'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
+    Route::get('/management-dashboard', ManagementDashboard::class)->name('management-dashboard');
     Route::get('/synced-albums/{spId?}', SyncedAlbums::class)->name('synced-albums');
     Route::get('/sidlan-data', SidlanData::class)->name('sidlan-data');
-    Route::get('/sidlan-progress', SidlanProgress::class)->name('sidlan-progress');
+
     Route::get('/sp-albums/{spId}', SpAlbums::class)->name('sp-albums');
 });
 

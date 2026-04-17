@@ -17,5 +17,5 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->withSchedule(function (Schedule $schedule) {
-        $schedule->command('sync:api-data')->everyThirtyMinutes();
+        // No scheduled commands
     })->create();

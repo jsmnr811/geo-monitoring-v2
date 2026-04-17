@@ -34,6 +34,8 @@ class SidlanData extends Component
 
     public string $stage = 'all';
 
+    public string $projectType = 'all';
+
     public array $albumStatus = [];
 
     public array $stageOptions = [
@@ -47,6 +49,10 @@ class SidlanData extends Component
     ];
 
     public array $regionOptions = [
+        'all' => 'All',
+    ];
+
+    public array $projectTypeOptions = [
         'all' => 'All',
     ];
 
@@ -94,6 +100,56 @@ class SidlanData extends Component
             'hasBasedPhotos' => false,
             'hasCompleted' => false,
         ];
+    }
+
+    /**
+     * Calculate scores for a SIDLAN data row.
+     */
+    public function calculateScores(array $row): array
+    {
+        $spId = $row['sp_id'] ?? '';
+        if (empty($spId)) {
+            Log::info('No sp_id found in row', ['row_keys' => array_keys($row)]);
+
+            return [];
+        }
+
+        Log::info('Calculating scores for sp_id: '.$spId);
+
+        // Get album status
+        $albumStatus = $this->getAlbumStatus($spId);
+        Log::info('Album status for '.$spId, $albumStatus);
+
+        // Calculate album score (simplified version from SpAlbums)
+        $album_score = 0;
+
+        // Based Photos: 15% if present
+        if ($albumStatus['hasBasedPhotos']) {
+            $album_score += 15;
+        }
+
+        // Completed Album: 25% if present (not required for construction)
+        $stage = strtolower($row['stage'] ?? '');
+        if ($albumStatus['hasCompleted'] || $stage !== 'completed') {
+            $album_score += 25;
+        }
+
+        // For list view, we'll use a simplified calculation
+        // In a full implementation, you'd need the detailed SIDLAN field analysis
+        $completeness_pct = 85; // Placeholder - would need actual field analysis
+
+        // Overall score: 30% SIDLAN completeness + 70% album compliance
+        $overall_pct = round($completeness_pct * 0.3 + $album_score * 0.7, 1);
+
+        $scores = [
+            'completeness_pct' => $completeness_pct,
+            'album_score' => $album_score,
+            'overall_pct' => $overall_pct,
+        ];
+
+        Log::info('Calculated scores for '.$spId, $scores);
+
+        return $scores;
     }
 
     public function fetchData(): void
@@ -160,6 +216,11 @@ class SidlanData extends Component
         $this->resetPage();
     }
 
+    public function updatedProjectType(): void
+    {
+        $this->resetPage();
+    }
+
     public function resetPage(): void
     {
         $this->page = 1;
@@ -175,6 +236,7 @@ class SidlanData extends Component
         // Extract unique clusters and regions from data for filter options
         $clusters = ['all' => 'All'];
         $regions = ['all' => 'All'];
+        $projectTypes = ['all' => 'All'];
         foreach ($this->data as $item) {
             $row = is_object($item) ? get_object_vars($item) : $item;
             if (! empty($row['cluster'])) {
@@ -188,11 +250,16 @@ class SidlanData extends Component
                 }
                 $regions[$regionValue] = $regionValue;
             }
+            if (! empty($row['project_type'])) {
+                $projectTypes[$row['project_type']] = $row['project_type'];
+            }
         }
         asort($clusters);
         asort($regions);
+        asort($projectTypes);
         $this->clusterOptions = $clusters;
         $this->regionOptions = $regions;
+        $this->projectTypeOptions = $projectTypes;
 
         // Apply filters
         $dataCollection = collect($this->data)->map(function ($item) {
@@ -204,8 +271,8 @@ class SidlanData extends Component
             // Filter by search (id, sp_id, project_name)
             if (! empty($this->search)) {
                 $searchLower = strtolower($this->search);
-                $idMatch = isset($row['id']) && strtolower((string) $row['id']) === $searchLower;
-                $spIdMatch = isset($row['sp_id']) && strtolower((string) $row['sp_id']) === $searchLower;
+                $idMatch = isset($row['id']) && strpos(strtolower((string) $row['id']), $searchLower) !== false;
+                $spIdMatch = isset($row['sp_id']) && strpos(strtolower((string) $row['sp_id']), $searchLower) !== false;
                 $projectNameMatch = isset($row['project_name']) && strpos(strtolower($row['project_name']), $searchLower) !== false;
 
                 if (! $idMatch && ! $spIdMatch && ! $projectNameMatch) {
@@ -242,6 +309,14 @@ class SidlanData extends Component
                 }
             }
 
+            // Filter by project_type
+            if ($this->projectType !== 'all' && ! empty($this->projectType)) {
+                $itemProjectType = $row['project_type'] ?? '';
+                if (strtolower($itemProjectType) !== strtolower($this->projectType)) {
+                    return false;
+                }
+            }
+
             return true;
         });
 
@@ -258,6 +333,29 @@ class SidlanData extends Component
 
         $currentPage = $totalPages > 0 ? $this->page : 1;
         $paginatedData = $chunkedData->get($currentPage - 1, collect());
+
+        // Calculate scores for each item
+        $paginatedData = $paginatedData->map(function ($item) {
+            $row = is_object($item) ? get_object_vars($item) : $item;
+
+            // For testing, add dummy scores
+            $scores = [
+                'completeness_pct' => rand(70, 95),
+                'album_score' => rand(40, 100),
+                'overall_pct' => rand(60, 90),
+            ];
+
+            // Merge scores into the item
+            if (is_object($item)) {
+                foreach ($scores as $key => $value) {
+                    $item->$key = $value;
+                }
+
+                return $item;
+            } else {
+                return array_merge($row, $scores);
+            }
+        });
 
         return view('livewire.sidlan-data', [
             'paginatedData' => $paginatedData,

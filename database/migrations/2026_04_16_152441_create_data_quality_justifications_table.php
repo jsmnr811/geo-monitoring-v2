@@ -11,13 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('geo_mapping_albums', function (Blueprint $table) {
+        Schema::create('data_quality_justifications', function (Blueprint $table) {
             $table->id();
-            $table->string('item_id')->nullable();
             $table->string('sp_id');
-            $table->json('data');
-            $table->timestamp('synced_at');
+            $table->string('issue_type');
+            $table->text('justification_text');
+            $table->unsignedBigInteger('user_id');
             $table->timestamps();
+
+            $table->index(['sp_id', 'issue_type']);
+            $table->foreign('user_id')->references('id')->on('users');
         });
     }
 
@@ -26,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('geo_mapping_albums');
+        Schema::dropIfExists('data_quality_justifications');
     }
 };
