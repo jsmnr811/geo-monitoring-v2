@@ -15,6 +15,7 @@ class DataQualityJustification extends Model
         'issue_type',
         'justification_text',
         'user_id',
+        'deleted_by',
     ];
 
     protected $dates = ['deleted_at'];

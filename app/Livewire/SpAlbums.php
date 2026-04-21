@@ -3,8 +3,10 @@
 namespace App\Livewire;
 
 use App\Models\DataQualityJustification;
+use App\Models\User;
 use App\Services\GeoMappingAPIService;
 use App\Services\SidlanAPIService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
@@ -356,6 +358,12 @@ class SpAlbums extends Component
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($justification) {
+                $deletedBy = null;
+                if ($justification->deleted_by) {
+                    $deleter = User::find($justification->deleted_by);
+                    $deletedBy = $deleter ? $deleter->name : 'Unknown';
+                }
+
                 return [
                     'id' => $justification->id,
                     'issue_type' => $justification->issue_type,
@@ -363,6 +371,7 @@ class SpAlbums extends Component
                     'user' => $justification->user->name ?? 'Unknown',
                     'timestamp' => $justification->created_at->format('Y-m-d H:i:s'),
                     'deleted_at' => $justification->deleted_at,
+                    'deleted_by' => $deletedBy,
                 ];
             })
             ->toArray();
@@ -614,8 +623,11 @@ class SpAlbums extends Component
             // Missing albums for months with progress
             foreach ($this->monthsWithProgressNoAlbum as $month) {
                 if (! in_array('missing_album_'.$month, $this->justifications)) {
-                    $date = \DateTime::createFromFormat('Y-m', $month);
-                    $formattedMonth = $date ? $date->format('F Y') : $month;
+                    try {
+                        $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
+                    } catch (\Exception $e) {
+                        $formattedMonth = $month;
+                    }
                     $compliance['issues'][] = ['type' => 'missing_album_'.$month, 'text' => 'Missing album for '.$formattedMonth];
                 }
             }
@@ -641,11 +653,23 @@ class SpAlbums extends Component
                 $album_score += 30;
             }
 
-            // Progress compliance (albums for progress months): 30% if all progress months have albums or justified
-            $progress_ok = empty(array_filter($this->monthsWithProgressNoAlbum, fn ($month) => ! in_array('missing_album_'.$month, $this->justifications)));
-            if ($progress_ok) {
+            // Progress compliance (albums for progress months): 30% proportionally for each justified missing album
+            $missingMonths = $this->monthsWithProgressNoAlbum;
+            $totalMissing = count($missingMonths);
+            $justifiedCount = 0;
+            foreach ($missingMonths as $month) {
+                if (in_array('missing_album_'.$month, $this->justifications)) {
+                    $justifiedCount++;
+                }
+            }
+            if ($totalMissing > 0) {
+                $progressScore = (30 / $totalMissing) * $justifiedCount;
+                $album_score += $progressScore;
+            } else {
+                $progressScore = 30; // no missing months, full score
                 $album_score += 30;
             }
+            $compliance['progress_score'] = round($progressScore, 1);
 
             $compliance['album_score'] = $album_score;
 
@@ -833,6 +857,9 @@ class SpAlbums extends Component
         $this->loadJustifications();
         $this->loadAuditTrail();
         $this->computeAnalytics(); // Recompute to update issues
+
+        // Close the modal after saving
+        $this->modal('justification-modal')->close();
     }
 
     public function deleteJustification(int $justificationId): void
@@ -840,6 +867,8 @@ class SpAlbums extends Component
         $justification = DataQualityJustification::find($justificationId);
 
         if ($justification && $justification->sp_id === $this->spId) {
+            $justification->deleted_by = Auth::id();
+            $justification->save();
             $justification->delete(); // Soft delete
             $this->loadJustifications();
             $this->loadAuditTrail();

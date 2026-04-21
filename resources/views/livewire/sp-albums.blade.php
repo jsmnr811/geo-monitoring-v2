@@ -46,12 +46,7 @@
     $overallRating = data_get($analytics, "{$spId}.overall_pct", 0);
     $completenessPct = data_get($analytics, "{$spId}.completeness_pct", 0);
     $albumScore = data_get($analytics, "{$spId}.album_score", 0);
-    $progress_ok = empty(
-    array_filter(
-    $monthsWithProgressNoAlbum ?? [],
-    fn($month) => !in_array('missing_album_' . $month, $justifications ?? []),
-    )
-    );
+    $progress_score = data_get($analytics, "{$spId}.progress_score", 0);
     $ratingText =
     $overallRating >= 90
     ? 'Excellent'
@@ -182,8 +177,10 @@
                     <div class="flex justify-between">
                         <span class="text-gray-500">Progress albums</span>
                         <span class="font-medium">
-                            @if ($progress_ok)
+                            @if ($progress_score == 30)
                             <span class="text-green-600">Complete (+30%)</span>
+                            @elseif ($progress_score > 0)
+                            <span class="text-yellow-500">Partial (+{{ $progress_score }}%)</span>
                             @else
                             <span class="text-red-500">Incomplete</span>
                             @endif

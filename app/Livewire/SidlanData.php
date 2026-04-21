@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\DataQualityJustification;
 use App\Services\GeoMappingAPIService;
 use App\Services\SidlanAPIService;
 use Illuminate\Support\Facades\Log;
@@ -103,6 +104,223 @@ class SidlanData extends Component
     }
 
     /**
+     * Get completeness fields.
+     */
+    protected function getCompletenessFields(array $row): array
+    {
+        $completenessFields = [];
+
+        // Main level fields
+        $mainFields = [
+            'sp_id' => 'Subproject ID',
+            'project_name' => 'Project Name',
+            'project_type' => 'Project Type',
+            'fund_source' => 'Fund Source',
+            'cluster' => 'Cluster',
+            'region' => 'Region',
+            'province' => 'Province',
+            'municipality' => 'Municipality',
+            'indicative_cost' => 'Indicative Cost',
+            'cost_during_validation' => 'Cost During Validation',
+            'stage' => 'Stage',
+            'status' => 'Status',
+            'date_validated' => 'Date Validated',
+            'contractor_supplier' => 'Contractor/Supplier',
+            'latitude' => 'Latitude',
+            'longitude' => 'Longitude',
+            'component' => 'Component',
+        ];
+        $completenessFields = array_merge($completenessFields, $mainFields);
+
+        // Annex fields
+        if (isset($row['annex'])) {
+            $annexFields = [
+                'annex.sp_description' => 'SP Description',
+                'annex.sp_objective' => 'SP Objective',
+                'annex.estimated_project_cost' => 'Estimated Project Cost',
+                'annex.cost_rpab_approved' => 'Cost RPAB Approved',
+                'annex.cost_nol_1' => 'Cost NOL 1',
+                'annex.validation_status' => 'Validation Status',
+                'annex.quantity' => 'Quantity',
+                'annex.unit_measure' => 'Unit Measure',
+                'annex.linear_meter' => 'Linear Meter',
+                'annex.construction_duration' => 'Construction Duration',
+                'annex.validation_report' => 'Validation Report',
+                'annex.target_start_date' => 'Target Start Date',
+                'annex.actual_start_date' => 'Actual Start Date',
+                'annex.target_completion_date' => 'Target Completion Date',
+                'annex.actual_completion_date' => 'Actual Completion Date',
+            ];
+            $completenessFields = array_merge($completenessFields, $annexFields);
+        }
+
+        // Package fields
+        if (isset($row['package'])) {
+            $packageFields = [
+                'package.package_name' => 'Package Name',
+                'package.details' => 'Package Details',
+                'package.package_cost' => 'Package Cost',
+                'package.procurement_mode' => 'Procurement Mode',
+                'package.pras_file' => 'PRAS File',
+                'package.publication_closing_date' => 'Publication Closing Date',
+                'package.link_to_files' => 'Link to Files',
+                'package.target_date_completion' => 'Target Completion Date',
+                'package.contract_duration_from' => 'Contract From',
+                'package.contract_duration_to' => 'Contract To',
+                'package.financial_capacity' => 'Financial Capacity',
+                'package.bidded_amount' => 'Bidded Amount',
+                'package.awarded_cost' => 'Awarded Cost',
+            ];
+            $completenessFields = array_merge($completenessFields, $packageFields);
+        }
+
+        return $completenessFields;
+    }
+
+    protected function computeProgressAnalytics(array $row, array $justifications): array
+    {
+        $spId = $row['sp_id'] ?? '';
+        $sidlanId = $row['id'] ?? null;
+
+        if (! $sidlanId) {
+            return [
+                'progress_months_with_500_geotags' => 0,
+                'monthsWithProgressNoAlbum' => [],
+            ];
+        }
+
+        // Fetch progress data
+        $progressService = new SidlanAPIService;
+        $progressResult = $progressService->getProgress();
+
+        if (! is_array($progressResult) || ! isset($progressResult['data'])) {
+            return [
+                'progress_months_with_500_geotags' => 0,
+                'monthsWithProgressNoAlbum' => [],
+            ];
+        }
+
+        $progressData = $progressResult['data'];
+        $project = $progressData[$sidlanId] ?? null;
+
+        if (! $project) {
+            return [
+                'progress_months_with_500_geotags' => 0,
+                'monthsWithProgressNoAlbum' => [],
+            ];
+        }
+
+        // Fetch albums
+        $albumService = new GeoMappingAPIService;
+        $albumResult = $albumService->getSyncedAlbums($spId);
+        $albums = is_array($albumResult) && isset($albumResult['albums']) ? $albumResult['albums'] : [];
+
+        // Map albums by month
+        $groupedAlbums = $this->mapAlbumsByMonth($albums, $spId);
+
+        // Collect months with progress
+        $allMonths = [];
+        $progressByMonth = [];
+        foreach (($project['accomplishmentDates'] ?? []) as $date) {
+            $month = date('Y-m', strtotime($date));
+            $allMonths[$month] = true;
+            $progressByMonth[$month] = true;
+        }
+
+        // From album report_dates
+        foreach ($albums as $album) {
+            if (($album['sp_id'] ?? null) !== $spId) {
+                continue;
+            }
+            if (empty($album['report_date'])) {
+                continue;
+            }
+            $timestamp = strtotime($album['report_date']);
+            if (! $timestamp) {
+                continue;
+            }
+            $monthKey = date('Y-m', $timestamp);
+            $allMonths[$monthKey] = true;
+        }
+
+        $monthsWithProgressNoAlbum = [];
+        $progress_months_with_500_geotags = 0;
+
+        foreach ($allMonths as $month => $_) {
+            $actual = 0;
+            $progressDate = null;
+            foreach (($project['accomplishmentDates'] ?? []) as $date) {
+                if (date('Y-m', strtotime($date)) === $month) {
+                    $progressDate = $date;
+                    break;
+                }
+            }
+
+            if ($progressDate) {
+                $report = $project['progressReport'][$progressDate] ?? [];
+                $actualValue = $report['actual'] ?? 0;
+                if (is_numeric($actualValue)) {
+                    $actual = (float) $actualValue;
+                }
+            }
+
+            // Only valid numeric progress
+            if (! is_numeric($actual) || $actual <= 0) {
+                continue;
+            }
+
+            $albumsForMonth = $groupedAlbums[$month] ?? [];
+            $hasAlbum = ! empty($albumsForMonth);
+
+            if (! $hasAlbum) {
+                $monthsWithProgressNoAlbum[] = $month;
+            }
+
+            // Check geotags
+            $totalGeotags = 0;
+            foreach ($albumsForMonth as $album) {
+                $totalGeotags += (int) ($album['geotag_count'] ?? 0);
+            }
+            if ($totalGeotags >= 500) {
+                $progress_months_with_500_geotags++;
+            }
+        }
+
+        return [
+            'progress_months_with_500_geotags' => $progress_months_with_500_geotags,
+            'monthsWithProgressNoAlbum' => $monthsWithProgressNoAlbum,
+        ];
+    }
+
+    protected function mapAlbumsByMonth(array $albums, string $spId): array
+    {
+        $grouped = [];
+
+        foreach ($albums as $album) {
+            if (($album['sp_id'] ?? null) !== $spId) {
+                continue;
+            }
+
+            if (empty($album['report_date'])) {
+                continue;
+            }
+
+            $timestamp = strtotime($album['report_date']);
+            if (! $timestamp) {
+                continue;
+            }
+
+            $monthKey = date('Y-m', $timestamp);
+
+            $grouped[$monthKey][] = $album;
+        }
+
+        krsort($grouped);
+
+        return $grouped;
+    }
+
+    /**
      * Calculate scores for a SIDLAN data row.
      */
     public function calculateScores(array $row): array
@@ -116,27 +334,98 @@ class SidlanData extends Component
 
         Log::info('Calculating scores for sp_id: '.$spId);
 
+        // Get justifications for this sp_id
+        $justifications = DataQualityJustification::where('sp_id', $spId)->pluck('issue_type')->toArray();
+
         // Get album status
         $albumStatus = $this->getAlbumStatus($spId);
         Log::info('Album status for '.$spId, $albumStatus);
 
+        // Calculate SIDLAN completeness (same as SpAlbums)
+        $completenessFields = $this->getCompletenessFields($row);
+        $criticalFields = ['sp_id', 'project_name', 'project_type', 'annex.cost_nol_1', 'latitude', 'longitude', 'contractor_supplier'];
+        $stage = strtolower($row['stage'] ?? '');
+
+        $critical_present = 0;
+        $critical_total = count($criticalFields);
+        $other_present = 0;
+        $other_total = count($completenessFields) - $critical_total;
+
+        foreach ($completenessFields as $field => $label) {
+            $is_critical = in_array($field, $criticalFields);
+
+            // Handle nested fields
+            if (strpos($field, 'annex.') === 0) {
+                $nestedField = str_replace('annex.', '', $field);
+                $value = $row['annex'][$nestedField] ?? null;
+            } elseif (strpos($field, 'package.') === 0) {
+                $nestedField = str_replace('package.', '', $field);
+                $value = $row['package'][$nestedField] ?? null;
+            } else {
+                $value = $row[$field] ?? null;
+            }
+
+            // Special handling for Construction stage
+            $canBeNull = false;
+            if ($stage === 'construction') {
+                $nullableFields = [
+                    'annex.contract_duration_from',
+                    'annex.contract_duration_to',
+                    'annex.actual_completion_date',
+                    'package.contract_duration_from',
+                    'package.contract_duration_to',
+                ];
+                $canBeNull = in_array($field, $nullableFields);
+            }
+
+            $isMissing = ($value === null || $value === '') && ! $canBeNull;
+            $issue_type = 'missing_'.preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($field));
+            $is_present = ! $isMissing || in_array($issue_type, $justifications);
+
+            if ($is_critical) {
+                if ($is_present) {
+                    $critical_present++;
+                }
+            } else {
+                if ($is_present) {
+                    $other_present++;
+                }
+            }
+        }
+
+        $critical_pct = $critical_total > 0 ? round(($critical_present / $critical_total) * 100) : 0;
+        $other_pct = $other_total > 0 ? round(($other_present / $other_total) * 100) : 0;
+        $completeness_pct = round($critical_pct * 0.7 + $other_pct * 0.3, 1);
+
         // Calculate album score (simplified version from SpAlbums)
         $album_score = 0;
 
-        // Based Photos: 15% if present
-        if ($albumStatus['hasBasedPhotos']) {
+        // Based Photos: 15% if present or justified
+        $based_ok = $albumStatus['hasBasedPhotos'] || in_array('based_photos_missing', $justifications);
+        if ($based_ok) {
             $album_score += 15;
         }
 
-        // Completed Album: 25% if present (not required for construction)
-        $stage = strtolower($row['stage'] ?? '');
-        if ($albumStatus['hasCompleted'] || $stage !== 'completed') {
+        // Completed Album: 25% if present/not required or justified
+        $completed_ok = ($albumStatus['hasCompleted'] || $stage !== 'completed') || in_array('completed_album_missing', $justifications);
+        if ($completed_ok) {
             $album_score += 25;
         }
 
-        // For list view, we'll use a simplified calculation
-        // In a full implementation, you'd need the detailed SIDLAN field analysis
-        $completeness_pct = 85; // Placeholder - would need actual field analysis
+        // Calculate progress analytics (simplified)
+        $progressAnalytics = $this->computeProgressAnalytics($row, $justifications);
+
+        // Geotag compliance: 30% if no albums with 500+ geotags or justified
+        $geotag_ok = $progressAnalytics['progress_months_with_500_geotags'] == 0 || in_array('gms_album_compliance', $justifications);
+        if ($geotag_ok) {
+            $album_score += 30;
+        }
+
+        // Progress compliance: 30% if all progress months have albums or justified
+        $progress_ok = empty(array_filter($progressAnalytics['monthsWithProgressNoAlbum'], fn ($month) => ! in_array('missing_album_'.$month, $justifications)));
+        if ($progress_ok) {
+            $album_score += 30;
+        }
 
         // Overall score: 30% SIDLAN completeness + 70% album compliance
         $overall_pct = round($completeness_pct * 0.3 + $album_score * 0.7, 1);
@@ -341,12 +630,7 @@ class SidlanData extends Component
         $paginatedData = $paginatedData->map(function ($item) {
             $row = is_object($item) ? get_object_vars($item) : $item;
 
-            // For testing, add dummy scores
-            $scores = [
-                'completeness_pct' => rand(70, 95),
-                'album_score' => rand(40, 100),
-                'overall_pct' => rand(60, 90),
-            ];
+            $scores = $this->calculateScores($row);
 
             // Merge scores into the item
             if (is_object($item)) {

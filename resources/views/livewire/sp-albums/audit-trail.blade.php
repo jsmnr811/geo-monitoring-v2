@@ -34,7 +34,7 @@
                     <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                         By {{ $entry['user'] ?? 'Unknown' }} on {{ $entry['timestamp'] ?? 'Unknown time' }}
                         @if($entry['deleted_at'])
-                            <span class="text-red-500">• Deleted on {{ \Carbon\Carbon::parse($entry['deleted_at'])->format('Y-m-d H:i:s') }}</span>
+                            <span class="text-red-500">• Deleted by {{ $entry['deleted_by'] ?? 'Unknown' }} on {{ \Carbon\Carbon::parse($entry['deleted_at'])->format('Y-m-d H:i:s') }}</span>
                         @endif
                     </div>
                 </div>

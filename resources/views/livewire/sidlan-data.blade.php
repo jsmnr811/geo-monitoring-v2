@@ -5,11 +5,8 @@
 
         <div>
             <h1 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-zinc-100">
-                SIDLAN Data
+                Subproject Data Quality and Compliance
             </h1>
-            <p class="text-xs sm:text-sm text-gray-500 dark:text-zinc-400">
-                Synchronized data from geocamera API
-            </p>
         </div>
 
         <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -202,7 +199,7 @@
                                 </div>
 
                                 @if (!empty($rowArray['sp_id']))
-                                    <a href="{{ route('sp-albums', ['spId' => $rowArray['sp_id']]) }}"
+                                    <a href="{{ route('sp-data', ['spId' => $rowArray['sp_id']]) }}"
                                         class="text-xs text-primary-600 hover:underline whitespace-nowrap">
                                         View
                                     </a>
@@ -257,7 +254,7 @@
                                                 class="flex justify-between px-2 py-1 rounded-md bg-gray-50 dark:bg-zinc-800/50">
                                                 <span class="text-gray-500 dark:text-zinc-400">SIDLAN</span>
                                                 <span
-                                                    class="font-semibold {{ $sidlanScore >= 70 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                                                    class="font-semibold {{ $sidlanScore == 100 ? 'text-green-600 dark:text-green-400' : ($sidlanScore <= 50 ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400') }}">
                                                     {{ $sidlanScore }}%
                                                 </span>
                                             </div>
@@ -268,7 +265,7 @@
                                                 class="flex justify-between px-2 py-1 rounded-md bg-gray-50 dark:bg-zinc-800/50">
                                                 <span class="text-gray-500 dark:text-zinc-400">Album</span>
                                                 <span
-                                                    class="font-semibold {{ $albumScore >= 70 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                                                    class="font-semibold {{ $albumScore == 100 ? 'text-green-600 dark:text-green-400' : ($albumScore <= 50 ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400') }}">
                                                     {{ $albumScore }}%
                                                 </span>
                                             </div>

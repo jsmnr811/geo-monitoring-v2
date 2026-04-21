@@ -22,7 +22,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/synced-albums/{spId?}', SyncedAlbums::class)->name('synced-albums');
     Route::get('/subprojects', SidlanData::class)->name('subprojects');
 
-    Route::get('/sp-albums/{spId}', SpAlbums::class)->name('sp-albums');
+    Route::get('/sp-data/{spId}', SpAlbums::class)->name('sp-data');
 });
 
 require __DIR__.'/settings.php';

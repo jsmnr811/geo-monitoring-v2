@@ -159,7 +159,7 @@
 
             <div
                 class="rounded-xl border border-neutral-200/40 dark:border-neutral-800 bg-white/70 dark:bg-zinc-900/70 p-4">
-                <flux:text class="text-xs text-neutral-500">Compliance</flux:text>
+                <flux:text class="text-xs text-neutral-500">GMS Album Compliance</flux:text>
                 <div class="mt-2 flex items-center gap-2">
                     <div class="text-xl font-semibold">{{ $compliance }}%</div>
                     <div class="flex-1 h-1.5 bg-neutral-200/60 dark:bg-neutral-800 rounded-full overflow-hidden">
@@ -197,9 +197,9 @@
                 <div
                     class="rounded-lg bg-neutral-50 dark:bg-zinc-800/40 border border-neutral-200/40 dark:border-neutral-700 p-4 text-xs text-neutral-600 dark:text-neutral-300">
                     <div class="font-semibold mb-2">Rating Formula</div>
-                    <div>• 30% SIDLAN Data Quality + 70% Compliance Score</div>
+                    <div>• 30% SIDLAN Data Quality + 70% GMS Album Compliance Score</div>
                     <div>• SIDLAN Data Quality = SIDLAN completeness</div>
-                    <div>• Compliance = Album + documentation coverage</div>
+                    <div>• GMS Album Compliance = Album + documentation coverage</div>
                 </div>
             </div>
 
@@ -244,7 +244,7 @@
 
                             <div>
                                 <div class="flex justify-between text-xs text-neutral-500">
-                                    <span>Data Quality</span>
+                                    <span>SIDLAN Data Quality</span>
                                     <span>{{ $stats['avg_completeness'] }}%</span>
                                 </div>
                                 <div class="h-1.5 bg-neutral-200/60 dark:bg-neutral-800 rounded-full overflow-hidden">
@@ -255,7 +255,7 @@
 
                             <div>
                                 <div class="flex justify-between text-xs text-neutral-500">
-                                    <span>Compliance</span>
+                                    <span>GMS Album Compliance</span>
                                     <span>{{ $stats['avg_album_score'] }}%</span>
                                 </div>
                                 <div class="h-1.5 bg-neutral-200/60 dark:bg-neutral-800 rounded-full overflow-hidden">
