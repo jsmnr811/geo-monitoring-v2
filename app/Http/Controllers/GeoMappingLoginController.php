@@ -82,7 +82,7 @@ class GeoMappingLoginController extends Controller
 
                 $request->session()->put('geo_mapping_access_token', $accessToken);
 
-                return redirect('/dashboard');
+                return redirect('/sidlan-data');
             }
 
             $request->session()->flash('error', $result['message'] ?? 'Invalid credentials.');

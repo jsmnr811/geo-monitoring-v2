@@ -15,23 +15,23 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/external-login', function () {
     try {
-        $service = new GeoMappingAPIService();
+        $service = new GeoMappingAPIService;
 
         $email = request('email');
         $password = request('password');
 
-        if (!$email || !$password) {
+        if (! $email || ! $password) {
             return response()->json([
-                'error' => 'email and password are required'
+                'error' => 'email and password are required',
             ], 400);
         }
 
         $result = $service->login($email, $password);
 
         return response()->json($result);
-    } catch (\Exception $e) {
+    } catch (Exception $e) {
         return response()->json([
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
         ], 500);
     }
 });
@@ -41,15 +41,15 @@ Route::get('/geocamera-albums', function () {
         $baseUrl = config('services.geo_monitoring_api.base_url');
         $token = config('services.geo_monitoring_api.bearer_token');
 
-        $service = new GeoMappingAPIService();
+        $service = new GeoMappingAPIService;
 
         $spId = request('sp_id');
         $startDate = request('start_date');
         $endDate = request('end_date');
 
-        if (!$spId) {
+        if (! $spId) {
             return response()->json([
-                'error' => 'sp_id is required'
+                'error' => 'sp_id is required',
             ], 400);
         }
 
@@ -65,7 +65,7 @@ Route::get('/geocamera-albums', function () {
             $params['end_date'] = $endDate;
         }
 
-        $fullUrl = rtrim($baseUrl, '/') . '/geocamera-albums?sp_id=' . $spId;
+        $fullUrl = rtrim($baseUrl, '/').'/geocamera-albums?sp_id='.$spId;
 
         $response = $service->get('/geocamera-albums', $params);
 
@@ -77,9 +77,9 @@ Route::get('/geocamera-albums', function () {
             ],
             'response' => json_decode($response->body(), true),
         ], $response->status());
-    } catch (\Exception $e) {
+    } catch (Exception $e) {
         return response()->json([
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
         ], 500);
     }
 });

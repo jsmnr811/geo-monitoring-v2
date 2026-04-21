@@ -1,12 +1,16 @@
 <?php
 
 use App\Http\Controllers\GeoMappingLoginController;
+use App\Livewire\ManagementDashboard;
 use App\Livewire\SidlanData;
 use App\Livewire\SpAlbums;
 use App\Livewire\SyncedAlbums;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'welcome')->name('home');
+Route::get('/', function () {
+    return Auth::check() ? redirect()->route('sidlan-data') : redirect()->route('login');
+})->name('home');
 
 Route::get('/login', [GeoMappingLoginController::class, 'create'])->name('login');
 Route::post('/login', [GeoMappingLoginController::class, 'store'])->name('login.store');

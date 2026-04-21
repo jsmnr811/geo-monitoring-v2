@@ -201,7 +201,7 @@
 
                                         @if ($overallRating !== null)
                                             <span
-                                                class="px-2 py-0.5 rounded-md text-xs font-semibold bg-gray-900 text-white dark:bg-zinc-100 dark:text-zinc-900">
+                                                class="px-2 py-0.5 rounded-md text-xs font-semibold bg-gray-900 text-white dark:bg-zinc-800 dark:text-zinc-100">
                                                 {{ $overallRating }}%
                                             </span>
                                         @endif
