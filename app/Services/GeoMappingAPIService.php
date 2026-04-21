@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class GeoMappingAPIService
 {
@@ -34,15 +35,16 @@ class GeoMappingAPIService
 
         $url = rtrim($this->baseUrl, '/').'/authenticate';
 
-        \Log::info('GeoMapping API Authentication:', ['api_key' => substr($this->apiKey, 0, 10).'...']);
+        Log::info('GeoMapping API Authentication:', ['api_key' => substr($this->apiKey, 0, 10).'...']);
 
-        $response = Http::asForm()
+        $response = Http::withOptions(['verify' => false])
+            ->asForm()
             ->post($url, [
                 'api_key' => $this->apiKey,
             ]);
 
         if (! $response->successful()) {
-            \Log::error('GeoMapping API Authentication failed:', [
+            Log::error('GeoMapping API Authentication failed:', [
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
@@ -55,12 +57,12 @@ class GeoMappingAPIService
         if ($result && isset($result['success']) && $result['success'] === true && isset($result['access_token'])) {
             $this->jwtToken = $result['access_token'];
 
-            \Log::info('GeoMapping API Authentication successful');
+            Log::info('GeoMapping API Authentication successful');
 
             return $this->jwtToken;
         }
 
-        \Log::error('GeoMapping API Authentication invalid response:', $result);
+        Log::error('GeoMapping API Authentication invalid response:', $result);
 
         return null;
     }
@@ -78,7 +80,8 @@ class GeoMappingAPIService
 
         $url = rtrim($this->baseUrl, '/').'/external-login';
 
-        $response = Http::withToken($jwtToken)
+        $response = Http::withOptions(['verify' => false])
+            ->withToken($jwtToken)
             ->asForm()
             ->post($url, [
                 'email' => $email,
@@ -122,68 +125,26 @@ class GeoMappingAPIService
         // Authenticate first to get JWT token
         $token = $this->authenticate();
 
-        return Http::withToken($token)
+        $http = Http::withOptions(['verify' => false])
+            ->withToken($token)
             ->withHeaders([
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
-            ])
-            ->send($method, $url, $data);
-    }
+            ]);
 
-    /**
-     * Get data from the GeoMapping API.
-     */
-    public function get(string $endpoint, array $params = [])
-    {
-        return $this->request($endpoint, 'GET', $params);
-    }
+        $response = match ($method) {
+            'GET' => $http->get($url, $data),
+            'POST' => $http->post($url, $data),
+            'PUT' => $http->put($url, $data),
+            'DELETE' => $http->delete($url, $data),
+            default => $http->get($url, $data),
+        };
 
-    /**
-     * Post data to the GeoMapping API.
-     */
-    public function post(string $endpoint, array $data = [])
-    {
-        return $this->request($endpoint, 'POST', $data);
-    }
-
-    /**
-     * Put data to the GeoMapping API.
-     */
-    public function put(string $endpoint, array $data = [])
-    {
-        return $this->request($endpoint, 'PUT', $data);
-    }
-
-    /**
-     * Delete data from the GeoMapping API.
-     */
-    public function delete(string $endpoint, array $params = [])
-    {
-        return $this->request($endpoint, 'DELETE', $params);
-    }
-
-    /**
-     * Get synchronized geotagged albums.
-     */
-    public function getSyncedAlbums(string $spId): array
-    {
-        $params = ['sp_id' => $spId];
-
-        \Log::info('SyncedAlbums API Request:', [
-            'endpoint' => '/sp-albums',
-            'params' => $params,
-        ]);
-
-        // Make request without JWT token
-        $response = Http::withHeaders([
-            'Accept' => 'application/json',
-            'Content-Type' => 'application/json',
-        ])
-            ->get(rtrim($this->baseUrl, '/').'/sp-albums', $params);
-
-        \Log::info('SyncedAlbums API Response:', [
+        Log::info('GeoMapping API Request:', [
+            'method' => $method,
+            'url' => $url,
+            'data' => $data,
             'status' => $response->status(),
-            'body' => $response->body(),
         ]);
 
         if (! $response->successful()) {
@@ -203,5 +164,13 @@ class GeoMappingAPIService
         }
 
         return $result;
+    }
+
+    /**
+     * Get synced albums for a specific SP ID.
+     */
+    public function getSyncedAlbums(string $spId): array
+    {
+        return $this->request('sp-albums', 'GET', ['sp_id' => $spId]);
     }
 }

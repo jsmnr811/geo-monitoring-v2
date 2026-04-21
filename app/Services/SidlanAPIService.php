@@ -35,7 +35,8 @@ class SidlanAPIService
 
         \Log::info('SIDLAN API Authentication:', ['api_key' => substr($this->apiKey, 0, 10).'...']);
 
-        $response = Http::asForm()
+        $response = Http::withoutVerifying()
+            ->asForm()
             ->post($url, [
                 'api_key' => $this->apiKey,
             ]);
@@ -71,9 +72,10 @@ class SidlanAPIService
     {
         $url = rtrim($this->baseUrl, '/').'/api/sidlan/progress';
 
-        $response = Http::withHeaders([
-            'Accept' => 'application/json',
-        ])
+        $response = Http::withoutVerifying()
+            ->withHeaders([
+                'Accept' => 'application/json',
+            ])
             ->get($url);
 
         if (! $response->successful()) {
@@ -97,75 +99,125 @@ class SidlanAPIService
 
     public function loadSyncedSidlanData(): array
     {
-        $response = Http::withHeaders([
-            'Accept' => 'application/json',
-        ])
-            ->get($this->baseUrl.'/project/load_synced_sidlan_data');
+        $url = $this->baseUrl.'/project/load_synced_sidlan_data';
 
-        if (! $response->successful()) {
-            return [
-                'success' => false,
-                'message' => 'API request failed ('.$response->status().')',
-            ];
-        }
+        // Create a temporary file for streaming large response
+        $tempFile = tempnam(sys_get_temp_dir(), 'sidlan_data_');
 
-        $result = $response->json();
+        try {
+            $response = Http::withoutVerifying()
+                ->retry(3, 2000)
+                ->timeout(120)
+                ->withHeaders([
+                    'Accept' => 'application/json',
+                ])
+                ->sink($tempFile)
+                ->get($url);
 
-        if (! $result) {
-            return [
-                'success' => false,
-                'message' => 'Invalid API response',
-            ];
-        }
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'API request failed ('.$response->status().')',
+                ];
+            }
 
-        // Filter: only keep entries where component='I-BUILD' AND stage in ['Construction', 'Completed']
-        $data = $result['data'] ?? $result ?? [];
+            // Read and decode the JSON from the temp file
+            $jsonContent = file_get_contents($tempFile);
+            $result = json_decode($jsonContent, true);
 
-        if (is_array($data)) {
-            $filtered = array_values(array_filter($data, function ($item) {
-                $row = is_array($item) ? $item : (is_object($item) ? get_object_vars($item) : []);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid JSON response: '.json_last_error_msg(),
+                ];
+            }
 
-                $componentMatch = ($row['component'] ?? '') === 'I-BUILD';
-                $stageValue = $row['stage'] ?? $row['Status'] ?? '';
-                $stageMatch = in_array($stageValue, ['Construction', 'Completed']);
+            if (! $result) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid API response',
+                ];
+            }
 
-                return $componentMatch && $stageMatch;
-            }));
+            // Filter: only keep entries where component='I-BUILD' AND stage in ['Construction', 'Completed']
+            $data = $result['data'] ?? $result ?? [];
 
-            // Update result with filtered data
-            if (isset($result['data'])) {
-                $result['data'] = $filtered;
-            } else {
-                $result = $filtered;
+            if (is_array($data)) {
+                $filtered = array_values(array_filter($data, function ($item) {
+                    $row = is_array($item) ? $item : (is_object($item) ? get_object_vars($item) : []);
+
+                    $componentMatch = ($row['component'] ?? '') === 'I-BUILD';
+                    $stageValue = $row['stage'] ?? $row['Status'] ?? '';
+                    $stageMatch = in_array($stageValue, ['Construction', 'Completed']);
+
+                    return $componentMatch && $stageMatch;
+                }));
+
+                // Update result with filtered data
+                if (isset($result['data'])) {
+                    $result['data'] = $filtered;
+                } else {
+                    $result = $filtered;
+                }
+            }
+
+            return $result;
+        } finally {
+            // Clean up temp file
+            if (file_exists($tempFile)) {
+                unlink($tempFile);
             }
         }
-
-        return $result;
     }
 
     public function getAllSyncedSidlanData(): array
     {
-        $response = Http::withHeaders([
-            'Accept' => 'application/json',
-        ])
-            ->get($this->baseUrl.'/project/load_synced_sidlan_data');
+        $url = $this->baseUrl.'/project/load_synced_sidlan_data';
 
-        if (! $response->successful()) {
-            return [
-                'success' => false,
-                'message' => 'API request failed ('.$response->status().')',
-            ];
+        // Create a temporary file for streaming large response
+        $tempFile = tempnam(sys_get_temp_dir(), 'sidlan_data_all_');
+
+        try {
+            $response = Http::withoutVerifying()
+                ->retry(3, 2000)
+                ->timeout(120)
+                ->withHeaders([
+                    'Accept' => 'application/json',
+                ])
+                ->sink($tempFile)
+                ->get($url);
+
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'API request failed ('.$response->status().')',
+                ];
+            }
+
+            // Read and decode the JSON from the temp file
+            $jsonContent = file_get_contents($tempFile);
+            $result = json_decode($jsonContent, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid JSON response: '.json_last_error_msg(),
+                ];
+            }
+
+            if (! $result) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid API response',
+                ];
+            }
+
+            return $result;
+        } finally {
+            // Clean up temp file
+            if (file_exists($tempFile)) {
+                unlink($tempFile);
+            }
         }
-
-        $result = $response->json();
-
-        if (! $result) {
-            return [
-                'success' => false,
-                'message' => 'Invalid API response',
-            ];
-        }
-
-        return $result;
     }
 }

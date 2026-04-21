@@ -1,6 +1,6 @@
-<x-layouts::auth :title="__('GeoMapping Login')">
+<x-layouts::auth :title="__('Geo Monitoring Login')">
     <div class="flex flex-col gap-6">
-        <x-auth-header :title="__('Log in to GeoMapping')" :description="__('Enter your email and password below to log in')" />
+        <x-auth-header :title="__('Log in to Geo Monitoring')" :description="__('Enter your email and password below to log in')" />
 
         <!-- Session Status -->
         <x-auth-session-status class="text-center" :status="session('status')" />

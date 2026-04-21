@@ -107,8 +107,49 @@
 
     <!-- LOADING -->
     @if ($loading)
-        <div class="flex justify-center py-12">
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-gray-400 border-t-transparent"></div>
+        <div class="space-y-3">
+            @for ($i = 0; $i < 5; $i++)
+                <div class="bg-white dark:bg-zinc-900/40 rounded-xl border border-gray-200 dark:border-zinc-800 p-3 sm:p-4">
+                    <div class="flex gap-3 sm:gap-4">
+                        <!-- INDEX SKELETON -->
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-zinc-800 animate-pulse shrink-0"></div>
+                        <!-- CONTENT SKELETON -->
+                        <div class="flex-1 space-y-2 min-w-0">
+                            <!-- TOP SKELETON -->
+                            <div class="flex justify-between gap-2">
+                                <div class="min-w-0 flex-1">
+                                    <div class="h-4 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse mb-1"></div>
+                                    <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-1/2"></div>
+                                </div>
+                                <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-8"></div>
+                            </div>
+                            <!-- META SKELETON -->
+                            <div class="flex gap-1.5">
+                                <div class="h-5 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse w-16"></div>
+                                <div class="h-5 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse w-20"></div>
+                                <div class="h-5 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse w-12"></div>
+                            </div>
+                            <!-- SCORE SECTION SKELETON -->
+                            <div class="mt-3 pt-3 border-t border-gray-100 dark:border-zinc-700 space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-24"></div>
+                                    <div class="h-5 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-10"></div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div class="flex justify-between px-2 py-1 rounded-md bg-gray-50 dark:bg-zinc-800/50">
+                                        <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-12"></div>
+                                        <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-8"></div>
+                                    </div>
+                                    <div class="flex justify-between px-2 py-1 rounded-md bg-gray-50 dark:bg-zinc-800/50">
+                                        <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-12"></div>
+                                        <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-8"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endfor
         </div>
 
         <!-- DATA -->

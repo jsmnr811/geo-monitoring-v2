@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return Auth::check() ? redirect()->route('sidlan-data') : redirect()->route('login');
+    return Auth::check() ? redirect()->route('subprojects') : redirect()->route('login');
 })->name('home');
 
 Route::get('/login', [GeoMappingLoginController::class, 'create'])->name('login');
@@ -20,7 +20,7 @@ Route::middleware(['auth'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
     Route::get('/management-dashboard', ManagementDashboard::class)->name('management-dashboard');
     Route::get('/synced-albums/{spId?}', SyncedAlbums::class)->name('synced-albums');
-    Route::get('/sidlan-data', SidlanData::class)->name('sidlan-data');
+    Route::get('/subprojects', SidlanData::class)->name('subprojects');
 
     Route::get('/sp-albums/{spId}', SpAlbums::class)->name('sp-albums');
 });

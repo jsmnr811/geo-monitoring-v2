@@ -1,1 +1,1 @@
-<img src="/assets/images/Scale-Up Logo.png" {{ $attributes }} />
+<img src="{{ asset('assets/images/Scale-Up Logo.png') }}" class="object-contain" {{ $attributes }} />

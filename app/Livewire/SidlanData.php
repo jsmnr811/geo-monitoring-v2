@@ -18,7 +18,7 @@ class SidlanData extends Component
 
     public array $data = [];
 
-    public bool $loading = false;
+    public bool $loading = true;
 
     public string $error = '';
 
@@ -154,6 +154,7 @@ class SidlanData extends Component
 
     public function fetchData(): void
     {
+        Log::info('SidlanData fetchData started');
         $this->loading = true;
         $this->error = '';
 
@@ -181,6 +182,7 @@ class SidlanData extends Component
             $this->error = 'Something went wrong. Please try again.';
             $this->data = [];
         } finally {
+            Log::info('SidlanData fetchData finished, loading=false');
             $this->loading = false;
         }
     }
@@ -233,6 +235,7 @@ class SidlanData extends Component
 
     public function render()
     {
+        Log::info('SidlanData render called, loading='.($this->loading ? 'true' : 'false').', data count='.count($this->data));
         // Extract unique clusters and regions from data for filter options
         $clusters = ['all' => 'All'];
         $regions = ['all' => 'All'];

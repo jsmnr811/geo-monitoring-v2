@@ -23,9 +23,9 @@
                     :current="request()->routeIs('synced-albums')" wire:navigate>
                     {{ __('Synced Albums') }}
                 </flux:sidebar.item> --}}
-                <flux:sidebar.item icon="layout-grid" :href="route('sidlan-data')"
-                    :current="request()->routeIs('sidlan-data')" wire:navigate>
-                    {{ __('SIDLAN Data') }}
+                <flux:sidebar.item icon="layout-grid" :href="route('subprojects')"
+                    :current="request()->routeIs('subprojects')" wire:navigate>
+                    {{ __('Subprojects') }}
                 </flux:sidebar.item>
 
             </flux:sidebar.group>
