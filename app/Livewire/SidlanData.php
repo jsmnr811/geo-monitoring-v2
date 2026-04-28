@@ -644,10 +644,18 @@ class SidlanData extends Component
             }
         });
 
-        return view('livewire.sidlan-data', [
-            'paginatedData' => $paginatedData,
-            'totalItems' => $dataCollection->count(),
-            'totalPages' => $totalPages,
-        ]);
+        if (request()->is('guest/*')) {
+            return view('livewire.sidlan-data-guest', [
+                'paginatedData' => $paginatedData,
+                'totalItems' => $dataCollection->count(),
+                'totalPages' => $totalPages,
+            ]);
+        } else {
+            return view('livewire.sidlan-data', [
+                'paginatedData' => $paginatedData,
+                'totalItems' => $dataCollection->count(),
+                'totalPages' => $totalPages,
+            ]);
+        }
     }
 }

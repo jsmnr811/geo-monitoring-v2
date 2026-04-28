@@ -27,15 +27,19 @@
                     :current="request()->routeIs('subprojects')" wire:navigate>
                     {{ __('Subprojects') }}
                 </flux:sidebar.item>
-
             </flux:sidebar.group>
         </flux:sidebar.nav>
 
         <flux:spacer />
 
+        @if(auth()->check())
         <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />
+        @else
+        <flux:sidebar.item href="{{ route('login') }}" icon="user" wire:navigate>Login</flux:sidebar.item>
+        @endif
     </flux:sidebar>
 
+    @if(auth()->check())
     <!-- Mobile User Menu -->
     <flux:header class="lg:hidden">
         <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
@@ -79,10 +83,19 @@
             </flux:menu>
         </flux:dropdown>
     </flux:header>
+    @else
+    <flux:header class="lg:hidden">
+        <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
+
+        <flux:spacer />
+
+        <flux:button href="{{ route('login') }}" variant="ghost" wire:navigate>Login</flux:button>
+    </flux:header>
+    @endif
 
     {{ $slot }}
 
-    @livewireScripts
+     @livewireScripts
     @fluxScripts
 
 </body>

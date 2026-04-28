@@ -173,4 +173,9 @@ class GeoMappingAPIService
     {
         return $this->request('sp-albums', 'GET', ['sp_id' => $spId]);
     }
+
+    public function getAllAlbums(): array
+    {
+        return $this->request('sp-albums', 'GET');
+    }
 }

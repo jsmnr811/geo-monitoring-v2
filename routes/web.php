@@ -25,5 +25,11 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sp-data/{spId}', SpAlbums::class)->name('sp-data');
 });
 
+// Route::prefix('guest')->group(function () {
+//     Route::get('/management-dashboard', ManagementDashboard::class)->name('management-dashboard');
+//     Route::get('/synced-albums/{spId?}', SyncedAlbums::class)->name('synced-albums');
+//     Route::get('/subprojects', SidlanData::class)->name('subprojects');
+// });
+
 require __DIR__.'/settings.php';
 require __DIR__.'/api-test.php';

@@ -17,5 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->withSchedule(function (Schedule $schedule) {
-        // No scheduled commands
+        $schedule->command('sidlan:sync')->daily()->withoutOverlapping();
+        $schedule->command('sidlan:sync-progress')->daily()->withoutOverlapping();
+        $schedule->command('gms:sync-albums')->daily()->withoutOverlapping();
     })->create();
