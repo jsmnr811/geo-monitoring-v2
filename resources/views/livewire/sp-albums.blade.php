@@ -345,8 +345,8 @@
                 </flux:modal.close>
 
                 <flux:button wire:click="saveJustification" variant="primary" class="inline-flex items-center gap-2">
-    <span>Save Justification</span>
-</flux:button>
+                    <span>Save Justification</span>
+                </flux:button>
             </div>
 
     </flux:modal>

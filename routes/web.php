@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\GeoMappingLoginController;
+use App\Livewire\GmsCompliance;
 use App\Livewire\ManagementDashboard;
 use App\Livewire\SidlanData;
 use App\Livewire\SpAlbums;
@@ -23,7 +24,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/synced-albums/{spId?}', SyncedAlbums::class)->name('synced-albums');
     Route::get('/subprojects', Subprojects::class)->name('subprojects');
 
-    Route::get('/sp-data/{spId}', SpAlbums::class)->name('sp-data');
+    Route::get('/gms-compliance/{spId}', GmsCompliance::class)->name('gms-compliance');
+    Route::get('/sp-data/{spId}', SpAlbums::class)->name('sp-albums');
 });
 
 // Route::prefix('guest')->group(function () {

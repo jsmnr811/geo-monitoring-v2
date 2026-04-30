@@ -1,5 +1,11 @@
 <div class="p-4 sm:p-6 space-y-6">
 
+    <!-- BREADCRUMBS -->
+    <flux:breadcrumbs>
+        <flux:breadcrumbs.item href="{{ route('dashboard') }}">Home</flux:breadcrumbs.item>
+        <flux:breadcrumbs.item>Subprojects</flux:breadcrumbs.item>
+    </flux:breadcrumbs>
+
     <!-- HEADER -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
@@ -178,7 +184,7 @@
                                 </div>
 
                                 @if (!empty($row->sp_id))
-                                    <a href="{{ route('sp-data', ['spId' => $row->sp_id]) }}"
+                                    <a href="{{ route('gms-compliance', ['spId' => $row->sp_id]) }}"
                                         class="text-xs text-primary-600 hover:underline whitespace-nowrap">
                                         View
                                     </a>

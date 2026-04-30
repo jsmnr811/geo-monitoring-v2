@@ -7,13 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 class SidlanProject extends Model
 {
     protected $fillable = [
+        'id',
         'sp_index',
         'sp_id',
         'project_name',
         'project_type',
-        'component',
-        'stage',
-        'status',
         'fund_source',
         'cluster',
         'region',
@@ -21,17 +19,20 @@ class SidlanProject extends Model
         'municipality',
         'indicative_cost',
         'cost_during_validation',
+        'stage',
+        'status',
+        'date_validated',
+        'contractor_supplier',
         'latitude',
         'longitude',
-        'date_validated',
-        'api_timestamp',
         'encoder',
+        'component',
+        'timestamp',
         'raw_data',
     ];
 
     protected $casts = [
         'raw_data' => 'array',
-        'date_validated' => 'date',
     ];
 
     public function annex()
