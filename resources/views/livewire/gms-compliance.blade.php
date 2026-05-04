@@ -1,47 +1,6 @@
 <div class="p-4 md:p-6 lg:p-8 space-y-8">
 
-    @php
-        // Scoring breakdown
-        $progressMonths = $progressAnalytics['total_months_with_progress'] ?? 0;
-        $albumsMonths = $progressAnalytics['progress_with_albums'] ?? 0;
-        $sufficientGeotagsMonths = $progressAnalytics['progress_months_with_sufficient_geotags'] ?? 0;
 
-        // Calculate scores rounded to 2 decimal places for consistency
-        $geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
-        $progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
-
-        // Determine applicable components
-        $applicable = [
-            'based_photos' => true,
-            'completed_album' => strtolower($stage) === 'completed',
-            'geotag' => $progressMonths > 0,
-            'progress_album' => $progressMonths > 0,
-        ];
-
-        // Calculate weights based on stage
-        $basedPhotosWeight = strtolower($stage) === 'construction' ? 20 : 10;
-
-        // Calculate max possible score based on applicable components
-        $maxScore = 0;
-        if ($applicable['based_photos']) $maxScore += $basedPhotosWeight;
-        if ($applicable['completed_album']) $maxScore += 10;
-        if ($applicable['geotag']) $maxScore += 30;
-        if ($applicable['progress_album']) $maxScore += 50;
-
-        // Calculate achieved score
-        $achieved = 0;
-        if ($hasBasedPhotos) $achieved += $basedPhotosWeight;
-        if ($applicable['completed_album'] && $hasCompleted) $achieved += 10;
-        $achieved += $geotagScore;
-        $achieved += $progressAlbumScore;
-
-        // Calculate total score as percentage
-        $totalScore = $maxScore > 0 ? round(($achieved / $maxScore) * 100, 2) : 0;
-
-        // Additional scores for breakdown
-        $basicScore = ($hasBasedPhotos ? $basedPhotosWeight : 0) + (($applicable['completed_album'] && $hasCompleted) ? 10 : 0);
-        $progressScore = $geotagScore + $progressAlbumScore;
-    @endphp
 
     <!-- BREADCRUMBS -->
     <flux:breadcrumbs>

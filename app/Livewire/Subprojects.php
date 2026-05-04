@@ -114,21 +114,26 @@ class Subprojects extends Component
 
             // Compute progress analytics
             $progressAnalytics = [
-                'total_progress_months' => 0,
-                'progress_months_with_albums' => 0,
+                'total_months_with_progress' => 0,
+                'progress_with_albums' => 0,
                 'progress_months_with_sufficient_geotags' => 0,
             ];
 
             $monthsWithProgressNoAlbum = [];
 
             if ($progress) {
-                // Collect months with progress
+                // Collect months with progress (only where actual > 0)
                 $progressMonths = [];
                 foreach (($progress->accomplishment_dates ?? []) as $date) {
                     $month = date('Y-m', strtotime($date));
-                    $progressMonths[$month] = true;
+                    $progressDate = $date;
+                    $report = $progress->progress_report[$progressDate] ?? [];
+                    $actualValue = $report['actual'] ?? 0;
+                    if (is_numeric($actualValue) && $actualValue > 0) {
+                        $progressMonths[$month] = true;
+                    }
                 }
-                $progressAnalytics['total_progress_months'] = count($progressMonths);
+                $progressAnalytics['total_months_with_progress'] = count($progressMonths);
 
                 // Group albums by month
                 $groupedAlbums = [];
@@ -151,7 +156,7 @@ class Subprojects extends Component
                 foreach ($progressMonths as $month => $true) {
                     $albumsForMonth = $groupedAlbums[$month] ?? [];
                     if (! empty($albumsForMonth)) {
-                        $progressAnalytics['progress_months_with_albums']++;
+                        $progressAnalytics['progress_with_albums']++;
 
                         $totalGeotags = 0;
                         foreach ($albumsForMonth as $album) {
@@ -166,19 +171,56 @@ class Subprojects extends Component
                 }
             }
 
-            // Calculate score to match gms-compliance component
-            $progressMonths = $progressAnalytics['total_progress_months'];
-            $albumsMonths = $progressAnalytics['progress_months_with_albums'];
+            // Calculate scores to match gms-compliance component
+            $progressMonths = $progressAnalytics['total_months_with_progress'];
+            $albumsMonths = $progressAnalytics['progress_with_albums'];
             $sufficientGeotagsMonths = $progressAnalytics['progress_months_with_sufficient_geotags'];
 
             // Calculate scores rounded to 2 decimal places for consistency
             $geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
             $progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
 
-            // Calculate total as sum of all components for consistency
-            $totalScore = $geotagScore + $progressAlbumScore + ($hasBasedPhotos ? 20 : 0) + ((strtolower($stage) === 'completed' && $hasCompleted) ? 10 : 0);
+            // Determine applicable components
+            $applicable = [
+                'based_photos' => true,
+                'completed_album' => strtolower($stage) === 'completed',
+                'geotag' => $progressMonths > 0,
+                'progress_album' => $progressMonths > 0,
+            ];
 
-            return round($totalScore, 2);
+            // Calculate weights based on stage
+            $basedPhotosWeight = strtolower($stage) === 'construction' ? 20 : 10;
+
+            // Calculate max possible score based on applicable components
+            $maxScore = 0;
+            if ($applicable['based_photos']) {
+                $maxScore += $basedPhotosWeight;
+            }
+            if ($applicable['completed_album']) {
+                $maxScore += 10;
+            }
+            if ($applicable['geotag']) {
+                $maxScore += 30;
+            }
+            if ($applicable['progress_album']) {
+                $maxScore += 50;
+            }
+
+            // Calculate achieved score
+            $achieved = 0;
+            if ($hasBasedPhotos) {
+                $achieved += $basedPhotosWeight;
+            }
+            if ($applicable['completed_album'] && $hasCompleted) {
+                $achieved += 10;
+            }
+            $achieved += $geotagScore;
+            $achieved += $progressAlbumScore;
+
+            // Calculate total score as percentage
+            $totalScore = $maxScore > 0 ? round(($achieved / $maxScore) * 100, 2) : 0;
+
+            return $totalScore;
         } catch (\Throwable $e) {
             Log::error('Error computing GMS compliance rating for '.$spId.': '.$e->getMessage());
 

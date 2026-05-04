@@ -76,6 +76,25 @@ class GmsCompliance extends Component
 
     public string $justificationText = '';
 
+    // Scoring properties
+    public float $geotagScore = 0;
+
+    public float $progressAlbumScore = 0;
+
+    public array $applicable = [];
+
+    public int $basedPhotosWeight = 10;
+
+    public float $maxScore = 0;
+
+    public float $achieved = 0;
+
+    public float $totalScore = 0;
+
+    public float $basicScore = 0;
+
+    public float $progressScore = 0;
+
     public function mount(string $spId): void
     {
         $this->spId = $spId;
@@ -99,6 +118,7 @@ class GmsCompliance extends Component
         $this->loadAuditTrail();
         $this->computeProgressAnalytics();
         $this->computeAnalytics();
+        $this->computeScores();
 
         // Check for fix attempt
         if (Session::has('fix_attempted')) {
@@ -454,6 +474,62 @@ class GmsCompliance extends Component
         }
     }
 
+    private function computeScores(): void
+    {
+        // Scoring breakdown
+        $progressMonths = $this->progressAnalytics['total_months_with_progress'] ?? 0;
+        $albumsMonths = $this->progressAnalytics['progress_with_albums'] ?? 0;
+        $sufficientGeotagsMonths = $this->progressAnalytics['progress_months_with_sufficient_geotags'] ?? 0;
+
+        // Calculate scores rounded to 2 decimal places for consistency
+        $this->geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
+        $this->progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
+
+        // Determine applicable components
+        $this->applicable = [
+            'based_photos' => true,
+            'completed_album' => strtolower($this->stage) === 'completed',
+            'geotag' => $progressMonths > 0,
+            'progress_album' => $progressMonths > 0,
+        ];
+
+        // Calculate weights based on stage
+        $this->basedPhotosWeight = strtolower($this->stage) === 'construction' ? 20 : 10;
+
+        // Calculate max possible score based on applicable components
+        $this->maxScore = 0;
+        if ($this->applicable['based_photos']) {
+            $this->maxScore += $this->basedPhotosWeight;
+        }
+        if ($this->applicable['completed_album']) {
+            $this->maxScore += 10;
+        }
+        if ($this->applicable['geotag']) {
+            $this->maxScore += 30;
+        }
+        if ($this->applicable['progress_album']) {
+            $this->maxScore += 50;
+        }
+
+        // Calculate achieved score
+        $this->achieved = 0;
+        if ($this->hasBasedPhotos) {
+            $this->achieved += $this->basedPhotosWeight;
+        }
+        if ($this->applicable['completed_album'] && $this->hasCompleted) {
+            $this->achieved += 10;
+        }
+        $this->achieved += $this->geotagScore;
+        $this->achieved += $this->progressAlbumScore;
+
+        // Calculate total score as percentage
+        $this->totalScore = $this->maxScore > 0 ? round(($this->achieved / $this->maxScore) * 100, 2) : 0;
+
+        // Additional scores for breakdown
+        $this->basicScore = ($this->hasBasedPhotos ? $this->basedPhotosWeight : 0) + (($this->applicable['completed_album'] && $this->hasCompleted) ? 10 : 0);
+        $this->progressScore = $this->geotagScore + $this->progressAlbumScore;
+    }
+
     private function computeProgressAnalytics(): void
     {
         $this->progressAnalytics = [
@@ -536,6 +612,7 @@ class GmsCompliance extends Component
         $this->loadJustifications();
         $this->loadAuditTrail();
         $this->computeAnalytics(); // Recompute to update issues
+        $this->computeScores(); // Recompute scores
 
         // Close the modal after saving
         $this->modal('justification-modal')->close();
@@ -552,6 +629,7 @@ class GmsCompliance extends Component
             $this->loadJustifications();
             $this->loadAuditTrail();
             $this->computeAnalytics();
+            $this->computeScores();
         }
     }
 
