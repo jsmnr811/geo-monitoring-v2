@@ -44,4 +44,19 @@ class SidlanProject extends Model
     {
         return $this->hasOne(SidlanPackage::class);
     }
+
+    public function gmsAlbums()
+    {
+        return $this->hasMany(GmsAlbum::class, 'sp_id', 'sp_id');
+    }
+
+    public function progress()
+    {
+        return $this->hasOne(SidlanProgress::class, 'sp_index', 'sp_index');
+    }
+
+    public function justifications()
+    {
+        return $this->hasMany(DataQualityJustification::class, 'sp_id', 'sp_id');
+    }
 }

@@ -35,7 +35,22 @@ class GmsCompliance extends Component
 
     public bool $loading = false;
 
+    public bool $showIssuesAccordion = false;
+
+    public array $expandedTimelineMonths = [];
+
     public string $error = '';
+
+    public function toggleTimelineMonth($monthKey)
+    {
+        if (in_array($monthKey, $this->expandedTimelineMonths)) {
+            $this->expandedTimelineMonths = array_filter($this->expandedTimelineMonths, function ($key) use ($monthKey) {
+                return $key !== $monthKey;
+            });
+        } else {
+            $this->expandedTimelineMonths[] = $monthKey;
+        }
+    }
 
     public array $sidlanData = [];
 
@@ -361,12 +376,19 @@ class GmsCompliance extends Component
 
             $stage = strtolower($this->sidlanData['stage'] ?? '');
 
-            // GMS Album Compliance Issues
-            if ($this->progressAnalytics['progress_months_with_500_geotags'] > 0 && ! in_array('gms_album_compliance', $this->justifications)) {
-                $compliance['issues'][] = ['type' => 'gms_album_compliance', 'text' => 'GMS Album Compliance: Albums with 500 or more geotags found'];
+            // GMS Album Compliance Issues - specific months with insufficient geotags
+            foreach ($this->progressAnalytics['months_with_insufficient_geotags'] as $month) {
+                if (! in_array('insufficient_geotags_'.$month, $this->justifications)) {
+                    try {
+                        $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
+                    } catch (\Exception $e) {
+                        $formattedMonth = $month;
+                    }
+                    $compliance['issues'][] = ['type' => 'insufficient_geotags_'.$month, 'text' => $formattedMonth.' has insufficient geotags (need ≥500)'];
+                }
             }
 
-            // Missing albums for months with progress
+            // Missing albums for specific months with progress
             foreach ($this->monthsWithProgressNoAlbum as $month) {
                 if (! in_array('missing_album_'.$month, $this->justifications)) {
                     try {
@@ -381,39 +403,45 @@ class GmsCompliance extends Component
             // Calculate GMS Album Compliance score (100% weight)
             $album_score = 0;
 
-            // Based Photos: 15% if present or justified
+            // Based Photos: 20% if present or justified
             $based_ok = $this->hasBasedPhotos || in_array('based_photos_missing', $this->justifications);
             if ($based_ok) {
-                $album_score += 15;
+                $album_score += 20;
             }
 
-            // Completed Album: 25% if present/not required or justified
-            $completed_ok = ($this->hasCompleted || $stage !== 'completed') || in_array('completed_album_missing', $this->justifications);
+            // Completed Album: 10% only if stage is completed and present, or justified
+            $completed_ok = (strtolower($stage) === 'completed' && $this->hasCompleted) || in_array('completed_album_missing', $this->justifications);
             if ($completed_ok) {
-                $album_score += 25;
+                $album_score += 10;
             }
 
-            // No albums with 500+ geotags in progress months: 30% if compliant or justified
-            $geotag_ok = $this->progressAnalytics['progress_months_with_500_geotags'] == 0 || in_array('gms_album_compliance', $this->justifications);
-            if ($geotag_ok) {
-                $album_score += 30;
-            }
+            // Geotag compliance: 30% proportional to months with ≥500 geotags
+            if ($this->progressAnalytics['total_months_with_progress'] > 0) {
+                $hasUnjustifiedGeotagIssues = ! empty(array_filter($this->progressAnalytics['months_with_insufficient_geotags'], function ($month) {
+                    return ! in_array('insufficient_geotags_'.$month, $this->justifications) && ! in_array('gms_album_compliance', $this->justifications);
+                }));
 
-            // Progress compliance (albums for progress months): 30% proportionally for each justified missing album
-            $missingMonths = $this->monthsWithProgressNoAlbum;
-            $totalMissing = count($missingMonths);
-            $justifiedCount = 0;
-            foreach ($missingMonths as $month) {
-                if (in_array('missing_album_'.$month, $this->justifications)) {
-                    $justifiedCount++;
+                if ($hasUnjustifiedGeotagIssues) {
+                    $geotagScore = ($this->progressAnalytics['progress_months_with_sufficient_geotags'] / $this->progressAnalytics['total_months_with_progress']) * 30;
+                } else {
+                    $geotagScore = 30; // no unjustified issues = full score
                 }
+                $album_score += $geotagScore;
             }
-            if ($totalMissing > 0) {
-                $progressScore = (30 / $totalMissing) * $justifiedCount;
+
+            // Progress album compliance: 50% proportional to months with albums
+            $progressScore = 0; // Initialize to avoid undefined variable error
+            if ($this->progressAnalytics['total_months_with_progress'] > 0) {
+                $hasUnjustifiedAlbumIssues = ! empty(array_filter($this->monthsWithProgressNoAlbum, function ($month) {
+                    return ! in_array('missing_album_'.$month, $this->justifications);
+                }));
+
+                if ($hasUnjustifiedAlbumIssues) {
+                    $progressScore = ($this->progressAnalytics['progress_with_albums'] / $this->progressAnalytics['total_months_with_progress']) * 50;
+                } else {
+                    $progressScore = 50; // no unjustified issues = full score
+                }
                 $album_score += $progressScore;
-            } else {
-                $progressScore = 30; // no missing months, full score
-                $album_score += 30;
             }
             $compliance['progress_score'] = round($progressScore, 1);
 
@@ -431,7 +459,8 @@ class GmsCompliance extends Component
         $this->progressAnalytics = [
             'total_months_with_progress' => 0,
             'progress_with_albums' => 0,
-            'progress_months_with_500_geotags' => 0,
+            'progress_months_with_sufficient_geotags' => 0,
+            'months_with_insufficient_geotags' => [],
             'total_geotags' => 0,
             'required_geotags' => 0,
             'geotag_compliance' => 0,
@@ -465,7 +494,9 @@ class GmsCompliance extends Component
                 $this->progressAnalytics['total_geotags'] += $totalGeotags;
 
                 if ($totalGeotags >= 500) {
-                    $this->progressAnalytics['progress_months_with_500_geotags']++;
+                    $this->progressAnalytics['progress_months_with_sufficient_geotags']++;
+                } else {
+                    $this->progressAnalytics['months_with_insufficient_geotags'][] = $month['month'];
                 }
             } else {
                 $this->monthsWithProgressNoAlbum[] = $month['month'];

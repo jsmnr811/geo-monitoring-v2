@@ -1,5 +1,17 @@
 <div class="p-4 sm:p-6 space-y-6">
 
+    <!-- LOADING BACKDROP -->
+    @if ($loading)
+    <div class="fixed inset-0 bg-black/50 dark:bg-white/30 flex items-center justify-center z-[9999]">
+        <div class="bg-white dark:bg-zinc-800 p-6 rounded-lg shadow-lg">
+            <div class="flex items-center space-x-2">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                <span class="text-gray-900 dark:text-zinc-100">Fetching subprojects...</span>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <!-- BREADCRUMBS -->
     <flux:breadcrumbs>
         <flux:breadcrumbs.item href="{{ route('dashboard') }}">Home</flux:breadcrumbs.item>
@@ -39,7 +51,7 @@
     <!-- FILTERS -->
     <div class="bg-white dark:bg-zinc-900/40 rounded-xl border border-gray-200 dark:border-zinc-800 p-4">
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
@@ -97,6 +109,19 @@
                 </select>
             </div>
 
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+                    Sort By
+                </label>
+                <select wire:model="sortBy" wire:change="$refresh"
+                    class="w-full text-sm rounded-lg border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition">
+                    <option value="rating_asc">Rating (Low to High)</option>
+                    <option value="rating_desc">Rating (High to Low)</option>
+                    <option value="name_asc">Name (A-Z)</option>
+                    <option value="name_desc">Name (Z-A)</option>
+                </select>
+            </div>
+
         </div>
 
     </div>
@@ -110,6 +135,9 @@
 
     <!-- LOADING -->
     @if ($loading)
+        <div class="text-center py-4 text-gray-500 dark:text-zinc-400 mb-4">
+            Fetching subprojects...
+        </div>
         <div class="space-y-3">
             @for ($i = 0; $i < 5; $i++)
                 <div class="bg-white dark:bg-zinc-900/40 rounded-xl border border-gray-200 dark:border-zinc-800 p-3 sm:p-4">
@@ -147,12 +175,15 @@
 
                 @php
                     $stage = strtolower($row->stage ?? '');
+                    $rating = $row->gms_compliance_rating ?? 0;
 
                     $stageBadgeClass = match ($stage) {
                         'completed' => 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
                         'construction' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                         default => 'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-zinc-300',
                     };
+
+
                 @endphp
 
                 <!-- CARD -->
@@ -173,13 +204,22 @@
                             <!-- TOP -->
                             <div class="flex justify-between gap-2">
 
-                                <div class="min-w-0">
+                                <div class="min-w-0 flex-1">
                                     <p class="text-sm font-semibold text-gray-900 dark:text-zinc-100 truncate">
                                         {{ $row->project_name ?? 'N/A' }}
                                     </p>
 
                                     <p class="text-xs text-gray-500 dark:text-zinc-400 truncate">
                                         {{ $row->sp_id ?? 'N/A' }}
+                                    </p>
+                                </div>
+
+                                <div class="text-right">
+                                    <span class="px-4 py-2 rounded-lg text-base font-bold shadow-sm border {{ $rating >= 90 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : ($rating >= 70 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : ($rating >= 50 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300')) }}">
+                                        {{ number_format($rating, 2) }}%
+                                    </span>
+                                    <p class="text-xs text-gray-500 dark:text-zinc-400">
+                                        GMS Rating
                                     </p>
                                 </div>
 

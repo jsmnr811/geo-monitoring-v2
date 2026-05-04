@@ -1,4 +1,47 @@
-<div class="p-4 md:p-6 space-y-6">
+<div class="p-4 md:p-6 lg:p-8 space-y-8">
+
+    @php
+        // Scoring breakdown
+        $progressMonths = $progressAnalytics['total_months_with_progress'] ?? 0;
+        $albumsMonths = $progressAnalytics['progress_with_albums'] ?? 0;
+        $sufficientGeotagsMonths = $progressAnalytics['progress_months_with_sufficient_geotags'] ?? 0;
+
+        // Calculate scores rounded to 2 decimal places for consistency
+        $geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
+        $progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
+
+        // Determine applicable components
+        $applicable = [
+            'based_photos' => true,
+            'completed_album' => strtolower($stage) === 'completed',
+            'geotag' => $progressMonths > 0,
+            'progress_album' => $progressMonths > 0,
+        ];
+
+        // Calculate weights based on stage
+        $basedPhotosWeight = strtolower($stage) === 'construction' ? 20 : 10;
+
+        // Calculate max possible score based on applicable components
+        $maxScore = 0;
+        if ($applicable['based_photos']) $maxScore += $basedPhotosWeight;
+        if ($applicable['completed_album']) $maxScore += 10;
+        if ($applicable['geotag']) $maxScore += 30;
+        if ($applicable['progress_album']) $maxScore += 50;
+
+        // Calculate achieved score
+        $achieved = 0;
+        if ($hasBasedPhotos) $achieved += $basedPhotosWeight;
+        if ($applicable['completed_album'] && $hasCompleted) $achieved += 10;
+        $achieved += $geotagScore;
+        $achieved += $progressAlbumScore;
+
+        // Calculate total score as percentage
+        $totalScore = $maxScore > 0 ? round(($achieved / $maxScore) * 100, 2) : 0;
+
+        // Additional scores for breakdown
+        $basicScore = ($hasBasedPhotos ? $basedPhotosWeight : 0) + (($applicable['completed_album'] && $hasCompleted) ? 10 : 0);
+        $progressScore = $geotagScore + $progressAlbumScore;
+    @endphp
 
     <!-- BREADCRUMBS -->
     <flux:breadcrumbs>
@@ -8,11 +51,11 @@
     </flux:breadcrumbs>
 
     <!-- HEADER WITH BACK BUTTON -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <h1 class="text-lg font-semibold text-gray-900 dark:text-zinc-100">
             GMS Album Compliance
         </h1>
-        <flux:button href="{{ route('subprojects') }}" variant="ghost" icon="arrow-left" wire:navigate>
+        <flux:button href="{{ route('subprojects') }}" variant="outline" size="sm" icon="arrow-left" wire:navigate>
             Back to Subprojects
         </flux:button>
     </div>
@@ -193,7 +236,120 @@
     </flux:card>
 
     {{-- ========================= --}}
-    {{-- ISSUES --}}
+    {{-- TIMELINE ANALYTICS SUMMARY --}}
+    {{-- ========================= --}}
+    @php
+        // Calculate timeline summary
+        $timelineMonths = [];
+        $timelineStats = [
+            'total_months' => 0,
+            'fully_compliant' => 0,
+            'partial_compliant' => 0,
+            'missing_albums' => 0,
+            'albums_only' => 0,
+            'no_data' => 0,
+        ];
+
+        if (!empty($progressData) && isset($progressData['months'])) {
+            $timelineMonths = array_filter($progressData['months'], function($row) {
+                $actual = $row['actual'] ?? 0;
+                $albums = $row['albums'] ?? [];
+                $hasAlbums = !empty($albums);
+                return $actual > 0 || $hasAlbums;
+            });
+
+            $timelineStats['total_months'] = count($timelineMonths);
+
+            foreach ($timelineMonths as $row) {
+                $actual = $row['actual'] ?? 0;
+                $albums = $row['albums'] ?? [];
+                $totalGeotags = collect($albums)->sum('geotag_count');
+                $hasAlbums = !empty($albums);
+
+                if ($actual > 0 && $hasAlbums && $totalGeotags >= 500) {
+                    $timelineStats['fully_compliant']++;
+                } elseif ($actual > 0 && $hasAlbums && $totalGeotags < 500) {
+                    $timelineStats['partial_compliant']++;
+                } elseif ($actual > 0 && !$hasAlbums) {
+                    $timelineStats['missing_albums']++;
+                } elseif ($actual == 0 && $hasAlbums) {
+                    $timelineStats['albums_only']++;
+                } else {
+                    $timelineStats['no_data']++;
+                }
+            }
+        }
+    @endphp
+
+        {{-- TIMELINE STATUS SUMMARY --}}
+        @if ($timelineStats['total_months'] > 0)
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+            <div class="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 p-4 shadow-sm">
+                <flux:icon.calendar class="w-6 h-6 text-zinc-500 dark:text-zinc-400" />
+                <div>
+                    <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Total Months Shown</div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ $timelineStats['total_months'] }}</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 rounded-xl border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 p-4 shadow-sm">
+                <flux:icon.check-circle class="w-6 h-6 text-green-500" />
+                <div>
+                    <div class="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wider">Fully Compliant</div>
+                    <div class="text-2xl font-bold text-green-700 dark:text-green-300">{{ $timelineStats['fully_compliant'] }}</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 rounded-xl border border-yellow-200 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/20 p-4 shadow-sm">
+                <flux:icon.exclamation-triangle class="w-6 h-6 text-yellow-500" />
+                <div>
+                    <div class="text-xs font-medium text-yellow-600 dark:text-yellow-400 uppercase tracking-wider">Partial (<500 geotags)</div>
+                    <div class="text-2xl font-bold text-yellow-700 dark:text-yellow-300">{{ $timelineStats['partial_compliant'] }}</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 rounded-xl border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-4 shadow-sm">
+                <flux:icon.x-circle class="w-6 h-6 text-red-500" />
+                <div>
+                    <div class="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wider">Missing Albums</div>
+                    <div class="text-2xl font-bold text-red-700 dark:text-red-300">{{ $timelineStats['missing_albums'] }}</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 rounded-xl border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 p-4 shadow-sm">
+                <flux:icon.photo class="w-6 h-6 text-blue-500" />
+                <div>
+                    <div class="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider">Albums Only</div>
+                    <div class="text-2xl font-bold text-blue-700 dark:text-blue-300">{{ $timelineStats['albums_only'] }}</div>
+                </div>
+            </div>
+        </div>
+        @endif
+
+        {{-- COMPREHENSIVE SCORING BREAKDOWN --}}
+        <div class="rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 shadow-sm p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Compliance Analytics</h4>
+                <div class="flex flex-col items-end gap-1">
+                    <div class="px-4 py-2 rounded-lg text-base font-bold shadow-sm {{ $totalScore >= 90 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : ($totalScore >= 70 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : ($totalScore >= 50 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300')) }} border">
+                        {{ number_format($totalScore, 2) }}%
+                    </div>
+                </div>
+            </div>
+
+
+
+             {{-- SCORE BREAKDOWN --}}
+             <div class="mt-4 pt-4 border-t border-gray-200 dark:border-zinc-700 text-sm">
+                 <div class="flex flex-col sm:flex-row sm:justify-between gap-2 py-2">
+                     <span class="font-medium text-gray-900 dark:text-white">Basic Components (Based Photos {{ $basedPhotosWeight }}%{{ $applicable['completed_album'] ? ', Completed Album 10%' : '' }}):</span>
+                     <span class="px-3 py-1 rounded-lg font-semibold text-sm border {{ $basicScore > 0 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' }}">{{ number_format($basicScore, 2) }}%</span>
+                 </div>
+                 <div class="flex flex-col sm:flex-row sm:justify-between gap-1 py-2">
+                     <span class="font-medium text-gray-900 dark:text-white">Progress Components (Geotag Limit 30%, Progress Albums 50%):</span>
+                     <span class="px-3 py-1 rounded-lg font-semibold text-sm border {{ $progressScore > 0 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' }}">{{ number_format($progressScore, 2) }}%</span>
+                 </div>
+             </div>
+          </div>
+
+     {{-- ========================= --}}
+     {{-- ISSUES --}}
     {{-- ========================= --}}
     @php
     $issues = [];
@@ -255,229 +411,137 @@
     ? 'yellow'
     : 'red'));
     @endphp
-    <flux:card class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
-        <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                GMS Album Compliance Rating
-            </h3>
-            <div class="flex items-center gap-2">
-                <span class="text-2xl font-bold text-{{ $ratingColor }}-600 dark:text-{{ $ratingColor }}-400">
-                    {{ $overallRating }}%
-                </span>
-                <span
-                    class="px-2 py-1 text-xs font-medium rounded-full bg-{{ $ratingColor }}-100 dark:bg-{{ $ratingColor }}-900/20 text-{{ $ratingColor }}-800 dark:text-{{ $ratingColor }}-300">
-                    {{ $ratingText }}
-                </span>
-                <flux:button wire:click="toggleRatingDetails" variant="ghost" size="sm" class="text-xs">
-                    <flux:icon.chevron-down class="w-4 h-4 {{ $showRatingDetails ? 'rotate-180' : '' }}" />
-                </flux:button>
-            </div>
-        </div>
-        @if ($showRatingDetails)
-        <div class="mt-4 pt-4 border-t border-gray-200 dark:border-zinc-700 space-y-4 text-xs">
 
-            <!-- GMS Album Compliance -->
-            <div class="space-y-2">
-                <div class="ml-3 space-y-1.5">
-                    <div class="flex justify-between">
-                        <span class="text-gray-500">Based Photos</span>
-                        <span class="font-medium">
-                            @if ($hasBasedPhotos)
-                            <span class="text-green-600">Yes (+15%)</span>
-                            @elseif(in_array('based_photos_missing', $justifications))
-                            <span class="text-yellow-500">Justified</span>
-                            @else
-                            <span class="text-red-500">No</span>
-                            @endif
-                        </span>
-                    </div>
-
-                    <div class="flex justify-between">
-                        <span class="text-gray-500">
-                            Completed Album
-                            <span class="italic text-gray-400">
-                                {{ strtolower($stage) === 'completed' ? '(required)' : '(not yet required)' }}
-                            </span>
-                        </span>
-                        <span class="font-medium">
-                            @if ($hasCompleted || strtolower($stage) !== 'completed')
-                            <span class="text-green-600">Yes (+25%)</span>
-                            @elseif(in_array('completed_album_missing', $justifications))
-                            <span class="text-yellow-500">Justified</span>
-                            @else
-                            <span class="text-red-500">No</span>
-                            @endif
-                        </span>
-                    </div>
-
-                    <div class="flex justify-between">
-                        <span class="text-gray-500">Geotag limit (≤500)</span>
-                        <span class="font-medium">
-                            @if (data_get($progressAnalytics, 'progress_months_with_500_geotags', 0) == 0)
-                            <span class="text-green-600">Good (+30%)</span>
-                            @elseif(in_array('gms_album_compliance', $justifications))
-                            <span class="text-yellow-500">Justified</span>
-                            @else
-                            <span class="text-red-500">Exceeded</span>
-                            @endif
-                        </span>
-                    </div>
-
-                    <div class="flex justify-between">
-                        <span class="text-gray-500">Progress albums</span>
-                        <span class="font-medium">
-                            @if ($progress_score == 30)
-                            <span class="text-green-600">Complete (+30%)</span>
-                            @elseif ($progress_score > 0)
-                            <span class="text-yellow-500">Partial (+{{ $progress_score }}%)</span>
-                            @else
-                            <span class="text-red-500">Incomplete</span>
-                            @endif
-                        </span>
-                    </div>
-
-                    <div
-                        class="flex justify-between pt-1 border-t border-gray-100 dark:border-zinc-700 font-semibold text-gray-900 dark:text-white">
-                        <span>Total GMS Score</span>
-                        <span>{{ $albumScore }}% → {{ number_format($albumScore, 1) }} pts</span>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-        @endif
-    </flux:card>
 
     {{-- ========================= --}}
-    {{-- ISSUE CARD --}}
-    {{-- ========================= --}}
-    @if (count($issues))
-    <flux:card class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
-
-        {{-- HEADER --}}
-        <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                    Data Quality Issues
-                </h3>
-
-                <span
-                    class="px-2 py-0.5 text-[11px] rounded-full
-                    bg-red-50 text-red-600
-                    dark:bg-red-900/20 dark:text-red-300">
-                    {{ count($issues) }}
-                </span>
-            </div>
-
-            <span class="text-xs text-zinc-500 dark:text-zinc-400">
-                Requires attention
-            </span>
-        </div>
-
-        {{-- LIST --}}
-        <div class="space-y-2">
-
-            @foreach ($issues as $issue)
-            <div
-                class="group flex items-center justify-between gap-3
-                    px-3 py-2.5 rounded-lg border
-                    border-gray-200 dark:border-zinc-700
-                    bg-gray-50/60 dark:bg-zinc-900/40
-                    hover:bg-gray-100 dark:hover:bg-zinc-900
-                    transition">
-
-                {{-- LEFT --}}
-                <div class="flex items-center gap-3 min-w-0">
-
-                    {{-- STATUS DOT --}}
-                    <div class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0"></div>
-
-                    {{-- TEXT --}}
-                    <div class="min-w-0">
-                        <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                            {{ $issue['text'] }}
-                        </div>
-
-                        <div class="text-[11px] text-zinc-500 dark:text-zinc-400">
-                            Compliance issue detected
-                        </div>
-                    </div>
-
-                </div>
-
-                {{-- ACTIONS --}}
-                <div class="flex items-center gap-1.5 shrink-0">
-
-                    <flux:modal.trigger name="justification-modal">
-                        <flux:button wire:click="justifyIssue('{{ $issue['type'] }}')" size="xs"
-                            variant="ghost" class="text-[11px] px-2 py-1">
-                            Justify
-                        </flux:button>
-                    </flux:modal.trigger>
-
-                    <flux:button wire:click="fixIssue('{{ $issue['type'] }}')" size="xs" variant="primary"
-                        class="text-[11px] px-2 py-1">
-                        Fix
-                    </flux:button>
-
-                </div>
-
-            </div>
-            @endforeach
-
-        </div>
-    </flux:card>
-    @endif
-
-    {{-- ========================= --}}
-    {{-- AUDIT TRAIL --}}
+    {{-- ISSUES & AUDIT TRAIL ACCORDION --}}
     {{-- ========================= --}}
     @php
+        $hasIssues = count($issues) > 0;
         $auditTrail = $auditTrail ?? [];
+        $hasAuditTrail = count($auditTrail) > 0;
+        $showAccordion = $hasIssues || $hasAuditTrail;
     @endphp
 
-    @if(count($auditTrail))
-    <flux:card class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                Audit Trail & Compliance Tracking
-            </h3>
-            <span class="text-xs text-zinc-500 dark:text-zinc-400">
-                Justification history
-            </span>
+    @if($showAccordion)
+    <div class="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 overflow-hidden">
+        {{-- ACCORDION HEADER --}}
+        <div class="px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-zinc-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 cursor-pointer"
+             wire:click="$toggle('showIssuesAccordion')">
+            <div class="flex items-center gap-3">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    Compliance Records & History
+                </h3>
+                @if($hasIssues)
+                <span class="px-2 py-0.5 text-[11px] rounded-full bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300">
+                    {{ count($issues) }}
+                </span>
+                @endif
+                @if($hasAuditTrail)
+                <span class="px-2 py-0.5 text-[11px] rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300">
+                    {{ count($auditTrail) }}
+                </span>
+                @endif
+            </div>
+
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-zinc-500 dark:text-zinc-400">
+                    Click to {{ $showIssuesAccordion ? 'collapse' : 'expand' }}
+                </span>
+                <flux:icon.chevron-down class="w-4 h-4 transition-transform {{ $showIssuesAccordion ? 'rotate-180' : '' }}" />
+            </div>
         </div>
 
-        <div class="space-y-2">
-            @foreach($auditTrail as $entry)
-                <div class="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 {{ $entry['deleted_at'] ? 'bg-red-50/60 dark:bg-red-900/40' : 'bg-gray-50/60 dark:bg-zinc-900/40' }}">
-                    <div class="min-w-0">
-                        <div class="text-sm font-medium text-gray-900 dark:text-white">
-                            {{ ucfirst(str_replace('_', ' ', $entry['issue_type'] ?? 'Unknown')) }}
-                            @if($entry['deleted_at'])
-                                <span class="text-xs text-red-600 dark:text-red-400">(Deleted)</span>
-                            @endif
+        {{-- ACCORDION CONTENT --}}
+        @if($showIssuesAccordion)
+        <div class="divide-y divide-gray-100 dark:divide-zinc-700">
+            {{-- ISSUES SECTION --}}
+            @if($hasIssues)
+            <div class="p-4 sm:p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                        <h4 class="text-sm font-medium text-gray-900 dark:text-white">Data Quality Issues</h4>
+                    </div>
+                    <span class="text-xs text-zinc-500 dark:text-zinc-400">Requires attention</span>
+                </div>
+
+                <div class="space-y-2">
+                    @foreach ($issues as $issue)
+                    <div class="group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-3 sm:px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50/60 dark:bg-zinc-900/40 hover:bg-gray-100 dark:hover:bg-zinc-900 transition">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-2 h-2 rounded-full bg-red-500 shrink-0"></div>
+                            <div class="min-w-0">
+                                <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                    {{ $issue['text'] }}
+                                </div>
+                                <div class="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                    Compliance issue detected
+                                </div>
+                            </div>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-zinc-300 mt-1">
-                            {{ $entry['justification'] ?? 'No justification provided' }}
-                        </div>
-                        <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                            By {{ $entry['user'] ?? 'Unknown' }} on {{ $entry['timestamp'] ?? 'Unknown time' }}
-                            @if($entry['deleted_at'])
-                                <span class="text-red-500">• Deleted by {{ $entry['deleted_by'] ?? 'Unknown' }} on {{ \Carbon\Carbon::parse($entry['deleted_at'])->format('Y-m-d H:i:s') }}</span>
-                            @endif
+
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <flux:modal.trigger name="justification-modal">
+                                <flux:button wire:click="justifyIssue('{{ $issue['type'] }}')" size="xs" variant="ghost" class="text-[11px] px-2 py-1">
+                                    Justify
+                                </flux:button>
+                            </flux:modal.trigger>
+                            <flux:button wire:click="fixIssue('{{ $issue['type'] }}')" size="xs" variant="primary" class="text-[11px] px-2 py-1">
+                                Fix
+                            </flux:button>
                         </div>
                     </div>
-                    @if(!$entry['deleted_at'])
+                    @endforeach
+                </div>
+            </div>
+            @endif
+
+            {{-- AUDIT TRAIL SECTION --}}
+            @if($hasAuditTrail)
+            <div class="p-4 sm:p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+                        <h4 class="text-sm font-medium text-gray-900 dark:text-white">Justification Records</h4>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    @foreach($auditTrail as $entry)
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-3 sm:px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 {{ $entry['deleted_at'] ? 'bg-red-50/60 dark:bg-red-900/40' : 'bg-gray-50/60 dark:bg-zinc-900/40' }}">
+                        <div class="min-w-0">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                {{ ucfirst(str_replace('_', ' ', $entry['issue_type'] ?? 'Unknown')) }}
+                                @if($entry['deleted_at'])
+                                <span class="text-xs text-red-600 dark:text-red-400">(Deleted)</span>
+                                @endif
+                            </div>
+                            <div class="text-sm text-gray-700 dark:text-zinc-300 mt-1">
+                                {{ $entry['justification'] ?? 'No justification provided' }}
+                            </div>
+                            <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                                By {{ $entry['user'] ?? 'Unknown' }} on {{ $entry['timestamp'] ?? 'Unknown time' }}
+                                @if($entry['deleted_at'])
+                                <span class="text-red-500">• Deleted by {{ $entry['deleted_by'] ?? 'Unknown' }} on {{ \Carbon\Carbon::parse($entry['deleted_at'])->format('Y-m-d H:i:s') }}</span>
+                                @endif
+                            </div>
+                        </div>
+                        @if(!$entry['deleted_at'])
                         <div class="flex items-center gap-1 shrink-0">
                             <flux:button wire:click="deleteJustification({{ $entry['id'] }})" size="xs" variant="ghost" class="text-xs px-2 py-1 text-red-600 hover:text-red-800">
                                 <flux:icon.trash class="w-4 h-4" />
                             </flux:button>
                         </div>
-                    @endif
+                        @endif
+                    </div>
+                    @endforeach
                 </div>
-            @endforeach
+            </div>
+            @endif
         </div>
-    </flux:card>
+        @endif
+    </div>
     @endif
 
 
@@ -487,35 +551,7 @@
     {{-- ========================= --}}
     <div class="space-y-5">
 
-        {{-- ========================= --}}
-        {{-- PROGRESS ANALYTICS (COMPACT KPI) --}}
-        {{-- ========================= --}}
-        @if (!empty($progressAnalytics))
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
 
-                @php
-                    $items = [
-                        ['label' => 'Months Progress', 'value' => $progressAnalytics['total_months_with_progress']],
-                        ['label' => 'With Albums', 'value' => $progressAnalytics['progress_with_albums']],
-                        ['label' => '≥500 Geotags', 'value' => $progressAnalytics['progress_months_with_500_geotags']],
-                        ['label' => 'Compliance', 'value' => $progressAnalytics['geotag_compliance'] . '%'],
-                    ];
-                @endphp
-
-                @foreach ($items as $item)
-                    <div
-                        class="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2.5">
-                        <div class="text-[11px] text-zinc-500 dark:text-zinc-400">
-                            {{ $item['label'] }}
-                        </div>
-                        <div class="text-lg font-semibold text-gray-900 dark:text-white mt-0.5">
-                            {{ $item['value'] }}
-                        </div>
-                    </div>
-                @endforeach
-
-            </div>
-        @endif
 
         {{-- ========================= --}}
         {{-- TIMELINE --}}
@@ -524,7 +560,7 @@
             <div class="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
 
                 {{-- HEADER --}}
-                <div class="px-4 py-3 border-b border-gray-200 dark:border-zinc-700 flex items-center justify-between">
+                <div class="px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-zinc-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
                         GMS Compliance Timeline
                     </h3>
@@ -534,11 +570,48 @@
                     </span>
                 </div>
 
+                {{-- LEGEND --}}
+                <div class="px-4 py-2 bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-200 dark:border-zinc-700">
+                    <div class="flex flex-wrap items-center gap-4 text-xs">
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                            <span class="text-gray-600 dark:text-zinc-300">Fully Compliant</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                            <span class="text-gray-600 dark:text-zinc-300">Progress + Albums (<500 geotags)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                            <span class="text-gray-600 dark:text-zinc-300">Progress Only (Missing Albums)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                            <span class="text-gray-600 dark:text-zinc-300">Albums Only (Not Scored)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
+                            <span class="text-gray-600 dark:text-zinc-300">No Data</span>
+                        </div>
+                    </div>
+                </div>
+
                 {{-- LIST --}}
                 <div class="divide-y divide-gray-100 dark:divide-zinc-700">
 
-                    @foreach ($progressData['months'] as $row)
+                    @php
+                        $filteredMonths = array_filter($progressData['months'], function($row) {
+                            $actual = $row['actual'] ?? 0;
+                            $albums = $row['albums'] ?? [];
+                            $hasAlbums = !empty($albums);
+                            return $actual > 0 || $hasAlbums;
+                        });
+                    @endphp
+
+                    @foreach ($filteredMonths as $row)
                         @php
+                            $monthKey = $row['month'];
+                            $isExpanded = in_array($monthKey, $expandedTimelineMonths ?? []);
                             $actual = $row['actual'] ?? 0;
                             $albums = $row['albums'] ?? [];
                             $totalGeotags = collect($albums)->sum('geotag_count');
@@ -551,18 +624,21 @@
                                 $dot = 'bg-green-500';
                             } elseif ($actual > 0 && $hasAlbums && $totalGeotags < 500) {
                                 $dot = 'bg-yellow-500';
-                            } elseif ($actual == 0) {
-                                $dot = 'bg-green-500';
-                            } else {
+                            } elseif ($actual > 0 && !$hasAlbums) {
                                 $dot = 'bg-red-500';
-                        } @endphp <div class="px-4 py-3 space-y-2">
+                            } elseif ($actual == 0 && $hasAlbums) {
+                                $dot = 'bg-blue-500'; // Albums exist but no progress - shown but not scored
+                            } else {
+                                $dot = 'bg-gray-400'; // No data
+                        } @endphp <div class="border-b border-gray-100 dark:border-zinc-700 last:border-b-0">
 
-                            {{-- HEADER ROW --}}
-                            <div class="flex items-center justify-between">
+                            {{-- ACCORDION HEADER (ALWAYS VISIBLE) --}}
+                            <div class="px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+                                 wire:click="toggleTimelineMonth('{{ $monthKey }}')">
 
-                                <div class="flex items-center gap-2 min-w-0">
+                                <div class="flex items-center gap-3 min-w-0 flex-1">
 
-                                    <div class="w-2.5 h-2.5 rounded-full {{ $dot }}"></div>
+                                    <div class="w-2.5 h-2.5 rounded-full {{ $dot }} shrink-0"></div>
 
                                     <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
                                         {{ \Carbon\Carbon::parse($row['month'])->format('F Y') }}
@@ -570,21 +646,42 @@
 
                                 </div>
 
-                                <div class="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                                    @if ($actual > 0)
-                                        {{ number_format($actual, 2) }}
-                                    @elseif ($hasAlbums)
-                                        No Progress
-                                    @else
-                                        No Data
-                                    @endif
+                                <div class="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
+
+                                    {{-- PROGRESS --}}
+                                    <div class="whitespace-nowrap">
+                                        @if ($actual > 0)
+                                            Progress: {{ number_format($actual, 2) }}
+                                        @elseif ($hasAlbums)
+                                            Progress: None
+                                        @else
+                                            No Data
+                                        @endif
+                                    </div>
+
+                                    {{-- GEOTAGS (ALWAYS SHOW) --}}
+                                    <div class="whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                                        Geotags: {{ number_format($totalGeotags) }}
+                                    </div>
+
+                                    {{-- EXPAND ICON --}}
+                                    <div class="ml-2">
+                                        <svg class="w-4 h-4 transition-transform {{ $isExpanded ? 'rotate-180' : '' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                        </svg>
+                                    </div>
+
                                 </div>
 
                             </div>
 
-                            {{-- ALBUM LIST --}}
-                            @if ($hasAlbums)
-                                <div class="space-y-1.5 pl-4">
+                            {{-- ACCORDION CONTENT (COLLAPSIBLE) --}}
+                            @if ($isExpanded)
+                            <div class="px-4 sm:px-6 pb-3">
+
+                                {{-- ALBUM LIST --}}
+                                @if ($hasAlbums)
+                                    <div class="space-y-1.5 pl-4 border-l-2 border-gray-200 dark:border-zinc-600 ml-3">
 
                                     @foreach ($albums as $album)
                                         @php
@@ -594,7 +691,7 @@
                                         @endphp
 
                                         @if ($albumUrl)
-                                            <div class="flex items-center justify-between gap-3 text-xs py-1.5">
+                                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs py-1.5">
 
                                                 {{-- LEFT --}}
                                                 <div class="min-w-0 pr-3">
@@ -631,12 +728,15 @@
                                         @endif
                                     @endforeach
 
-                                </div>
-                            @else
-                                <div class="pl-4 text-xs text-zinc-400 dark:text-zinc-500 italic">
-                                    No albums recorded
-                                </div>
-                            @endif
+                                    </div>
+                                @else
+                                    <div class="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                                        No albums recorded
+                                    </div>
+                                @endif
+
+                            </div>
+                        @endif
 
                         </div>
                     @endforeach
