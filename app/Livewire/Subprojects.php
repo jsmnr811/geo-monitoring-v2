@@ -36,6 +36,8 @@ class Subprojects extends Component
 
     public string $error = '';
 
+    protected $paginatedData = null;
+
     public array $stageOptions = [
         'all' => 'All',
         'Construction' => 'Construction',
@@ -54,11 +56,126 @@ class Subprojects extends Component
     {
         $this->loading = true;
         $this->setPage($page);
+        $this->js('$wire.fetchData()');
+    }
+
+
+
+    public function refreshData()
+    {
+        $this->loading = true;
+        $this->js('$wire.fetchData()');
     }
 
     public function fetchData()
     {
-        $this->loading = true;
+        try {
+            $query = SidlanProject::with(['annex', 'package', 'gmsAlbums', 'progress', 'justifications']);
+
+            // Filters
+            if ($this->cluster !== 'all') {
+                $query->where('cluster', $this->cluster);
+            }
+
+            if ($this->region !== 'all') {
+                $query->where('region', 'like', '%('.$this->region.')%');
+            }
+
+            if ($this->stage !== 'all') {
+                $query->where('stage', $this->stage);
+            }
+
+            if ($this->projectType !== 'all') {
+                $query->where('project_type', $this->projectType);
+            }
+
+            if (! empty($this->search)) {
+                $query->where(function ($q) {
+                    $q->where('id', 'like', '%'.$this->search.'%')
+                        ->orWhere('sp_id', 'like', '%'.$this->search.'%')
+                        ->orWhere('project_name', 'like', '%'.$this->search.'%');
+                });
+            }
+
+            // Get all filtered data
+            $allData = $query->get();
+
+            // Add GMS compliance rating to each item
+            $allData->transform(function ($project) {
+                $project->gms_compliance_rating = $this->computeGmsComplianceRating($project);
+
+                return $project;
+            });
+
+            // Sort the collection
+            if ($this->sortBy === 'rating_asc') {
+                $allData = $allData->sortBy('gms_compliance_rating');
+            } elseif ($this->sortBy === 'rating_desc') {
+                $allData = $allData->sortByDesc('gms_compliance_rating');
+            } elseif ($this->sortBy === 'name_asc') {
+                $allData = $allData->sortBy('project_name');
+            } elseif ($this->sortBy === 'name_desc') {
+                $allData = $allData->sortByDesc('project_name');
+            }
+
+            // Paginate the sorted collection manually
+            $currentPage = $this->getPage();
+            $perPage = $this->perPage;
+            $items = $allData->forPage($currentPage, $perPage);
+            $this->paginatedData = new LengthAwarePaginator(
+                $items,
+                $allData->count(),
+                $perPage,
+                $currentPage,
+                ['path' => request()->url(), 'pageName' => 'page']
+            );
+
+        } catch (\Throwable $e) {
+            Log::error('Subprojects error: '.$e->getMessage());
+
+            $this->error = 'Something went wrong. Please try again.';
+            $this->paginatedData = new LengthAwarePaginator([], 0, $this->perPage);
+        } finally {
+            $this->loading = false;
+        }
+
+        /**
+         * Build dropdowns correctly (FIXED)
+         */
+        $this->clusterOptions = ['all' => 'All'];
+
+        SidlanProject::query()
+            ->select('cluster')
+            ->distinct()
+            ->pluck('cluster')
+            ->filter()
+            ->sort()
+            ->each(fn ($c) => $this->clusterOptions[$c] = $c);
+
+        $this->regionOptions = ['all' => 'All'];
+
+        SidlanProject::query()
+            ->select('region')
+            ->distinct()
+            ->pluck('region')
+            ->filter()
+            ->each(function ($region) {
+                if (preg_match('/\((.*?)\)/', $region, $matches)) {
+                    $this->regionOptions[$matches[1]] = $matches[1];
+                }
+            });
+
+        asort($this->regionOptions);
+
+        $this->projectTypeOptions = ['all' => 'All'];
+
+        SidlanProject::query()
+            ->select('project_type')
+            ->distinct()
+            ->pluck('project_type')
+            ->filter()
+            ->sort()
+            ->each(fn ($t) => $this->projectTypeOptions[$t] = $t);
     }
 
     /**
@@ -77,6 +194,7 @@ class Subprojects extends Component
         ])) {
             $this->resetPage();
             $this->loading = true;
+            $this->js('$wire.fetchData()');
         }
     }
 
@@ -230,78 +348,8 @@ class Subprojects extends Component
 
     public function render()
     {
-        try {
-            $query = SidlanProject::with(['annex', 'package', 'gmsAlbums', 'progress', 'justifications']);
-
-            // Filters
-            if ($this->cluster !== 'all') {
-                $query->where('cluster', $this->cluster);
-            }
-
-            if ($this->region !== 'all') {
-                $query->where('region', 'like', '%('.$this->region.')%');
-            }
-
-            if ($this->stage !== 'all') {
-                $query->where('stage', $this->stage);
-            }
-
-            if ($this->projectType !== 'all') {
-                $query->where('project_type', $this->projectType);
-            }
-
-            if (! empty($this->search)) {
-                $query->where(function ($q) {
-                    $q->where('id', 'like', '%'.$this->search.'%')
-                        ->orWhere('sp_id', 'like', '%'.$this->search.'%')
-                        ->orWhere('project_name', 'like', '%'.$this->search.'%');
-                });
-            }
-
-            // Get all filtered data
-            $allData = $query->get();
-
-            // Add GMS compliance rating to each item
-            $allData->transform(function ($project) {
-                $project->gms_compliance_rating = $this->computeGmsComplianceRating($project);
-
-                return $project;
-            });
-
-            // Sort the collection
-            if ($this->sortBy === 'rating_asc') {
-                $allData = $allData->sortBy('gms_compliance_rating');
-            } elseif ($this->sortBy === 'rating_desc') {
-                $allData = $allData->sortByDesc('gms_compliance_rating');
-            } elseif ($this->sortBy === 'name_asc') {
-                $allData = $allData->sortBy('project_name');
-            } elseif ($this->sortBy === 'name_desc') {
-                $allData = $allData->sortByDesc('project_name');
-            }
-
-            // Paginate the sorted collection manually
-            $currentPage = $this->getPage();
-            $perPage = $this->perPage;
-            $items = $allData->forPage($currentPage, $perPage);
-            $paginatedData = new LengthAwarePaginator(
-                $items,
-                $allData->count(),
-                $perPage,
-                $currentPage,
-                ['path' => request()->url(), 'pageName' => 'page']
-            );
-
-        } catch (\Throwable $e) {
-            Log::error('Subprojects error: '.$e->getMessage());
-
-            $this->error = 'Something went wrong. Please try again.';
-            $paginatedData = new LengthAwarePaginator([], 0, $this->perPage);
-        } finally {
-            $this->loading = false;
-        }
-
         /**
-         * Build dropdowns correctly (FIXED)
+         * Build dropdowns
          */
         $this->clusterOptions = ['all' => 'All'];
 
@@ -339,7 +387,7 @@ class Subprojects extends Component
             ->each(fn ($t) => $this->projectTypeOptions[$t] = $t);
 
         return view('livewire.subprojects', [
-            'paginatedData' => $paginatedData,
+            'paginatedData' => $this->paginatedData ?? new LengthAwarePaginator([], 0, $this->perPage),
             'error' => $this->error,
             'loading' => $this->loading,
         ]);

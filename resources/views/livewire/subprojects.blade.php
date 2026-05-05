@@ -1,16 +1,6 @@
-<div class="p-4 sm:p-6 space-y-6">
+<div class="p-4 sm:p-6 space-y-6" wire:init="fetchData">
 
-    <!-- LOADING BACKDROP -->
-    @if ($loading)
-    <div class="fixed inset-0 bg-black/50 dark:bg-white/30 flex items-center justify-center z-[9999]">
-        <div class="bg-white dark:bg-zinc-800 p-6 rounded-lg shadow-lg">
-            <div class="flex items-center space-x-2">
-                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
-                <span class="text-gray-900 dark:text-zinc-100">Fetching subprojects...</span>
-            </div>
-        </div>
-    </div>
-    @endif
+
 
     <!-- BREADCRUMBS -->
     <flux:breadcrumbs>
@@ -39,7 +29,7 @@
 
             </select>
 
-            <button wire:click="fetchData"
+            <button wire:click="refreshData"
                 class="w-full sm:w-auto px-4 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 transition">
                 Refresh
             </button>
@@ -139,36 +129,10 @@
         Fetching subprojects...
     </div>
     <div class="space-y-3">
-        @for ($i = 0; $i < 5; $i++)
-            <div class="bg-white dark:bg-zinc-900/50 rounded-2xl border border-gray-200 dark:border-zinc-800 p-4 sm:p-6 shadow-sm">
-            <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
-                <!-- INDEX SKELETON -->
-                <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 animate-pulse shrink-0"></div>
-                <!-- CONTENT SKELETON -->
-                <div class="flex-1 space-y-3 min-w-0">
-                    <!-- TOP SKELETON -->
-                    <div class="flex flex-col sm:flex-row sm:justify-between gap-3 sm:gap-4">
-                        <div class="min-w-0 flex-1">
-                            <div class="h-5 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse mb-2"></div>
-                            <div class="h-4 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-3/4"></div>
-                        </div>
-                        <div class="flex flex-col gap-2 sm:items-end">
-                            <div class="h-6 bg-gray-200 dark:bg-zinc-700 rounded-xl animate-pulse w-16"></div>
-                            <div class="h-3 bg-gray-200 dark:bg-zinc-700 rounded animate-pulse w-12"></div>
-                        </div>
-                        <div class="h-8 bg-gray-200 dark:bg-zinc-700 rounded-lg animate-pulse w-20 mt-2 sm:mt-0"></div>
-                    </div>
-                    <!-- META SKELETON -->
-                    <div class="flex flex-wrap gap-2">
-                        <div class="h-6 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse w-20"></div>
-                        <div class="h-6 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse w-24"></div>
-                        <div class="h-6 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse w-16"></div>
-                        <div class="h-6 bg-gray-200 dark:bg-zinc-700 rounded-full animate-pulse w-18"></div>
-                    </div>
-                </div>
-            </div>
+        @for ($i = 0; $i < $perPage; $i++)
+            <x-skeleton-subproject />
+        @endfor
     </div>
-    @endfor
 </div>
 
 <!-- DATA -->
@@ -303,7 +267,16 @@
 
 </div>
 
+@else
+
+<div class="text-center py-10 text-gray-500 dark:text-zinc-400">
+    No data available
+</div>
+
+@endif
+
 <!-- PAGINATION -->
+@if ($paginatedData && $paginatedData->total() > 0)
 <div
     class="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-gray-600 dark:text-zinc-400 pt-4">
 
@@ -378,13 +351,6 @@
     </div>
 
 </div>
-
-@else
-
-<div class="text-center py-10 text-gray-500 dark:text-zinc-400">
-    No data available
-</div>
-
 @endif
 
 </div>
