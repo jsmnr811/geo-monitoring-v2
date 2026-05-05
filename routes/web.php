@@ -8,11 +8,10 @@ use App\Livewire\SpAlbums;
 use App\Livewire\Subprojects;
 use App\Livewire\SubprojectsDashboard;
 use App\Livewire\SyncedAlbums;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return Auth::check() ? redirect()->route('subprojects') : redirect()->route('login');
+Route::get('/home', function () {
+    return redirect()->route('login');
 })->name('home');
 
 Route::get('/login', [GeoMappingLoginController::class, 'create'])->name('login');
@@ -20,7 +19,7 @@ Route::post('/login', [GeoMappingLoginController::class, 'store'])->name('login.
 Route::get('/geo-mapping-login', [GeoMappingLoginController::class, 'create'])->name('geo-mapping.login');
 
 Route::middleware(['auth'])->group(function () {
-    Route::view('dashboard', 'dashboard')->name('dashboard');
+    Route::get('/', SubprojectsDashboard::class)->name('dashboard');
     Route::get('/management-dashboard', ManagementDashboard::class)->name('management-dashboard');
     Route::get('/synced-albums/{spId?}', SyncedAlbums::class)->name('synced-albums');
     Route::get('/subprojects', Subprojects::class)->name('subprojects');

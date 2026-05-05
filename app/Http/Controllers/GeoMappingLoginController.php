@@ -82,7 +82,7 @@ class GeoMappingLoginController extends Controller
 
                 $request->session()->put('geo_mapping_access_token', $accessToken);
 
-                return redirect('/subprojects');
+                return redirect('/subprojects-dashboard');
             }
 
             $request->session()->flash('error', $result['message'] ?? 'Invalid credentials.');
