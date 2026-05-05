@@ -1,5 +1,10 @@
 <div class="space-y-4">
 
+    <div wire:loading.remove wire:target="fetchData">
+    <flux:breadcrumbs>
+        <flux:breadcrumbs.item href="{{ route('subprojects-dashboard') }}">Dashboard</flux:breadcrumbs.item>
+    </flux:breadcrumbs>
+
     @php
     function scoreBar($val){
     return $val >= 80 ? 'bg-emerald-500'
@@ -21,11 +26,11 @@
     @endphp
 
     {{-- ================= KPI (CLEAN NEUTRAL) ================= --}}
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 my-4">
 
         @foreach([
         ['label'=>'Total Projects','value'=>$overallStats['total_projects'] ?? 0, 'icon'=>'chart-bar'],
-        ['label'=>'GMS Compliance','value'=>($overallStats['avg_rating'] ?? 0) . '%', 'icon'=>'star'],
+        ['label'=>        'GMS Compliance','value'=>number_format($overallStats['avg_rating'] ?? 0, 2) . '%', 'icon'=>'star'],
         ['label'=>'Completed','value'=>$overallStats['total_completed'] ?? 0, 'icon'=>'check-circle'],
         ['label'=>'Construction','value'=>$overallStats['total_construction'] ?? 0, 'icon'=>'cog-6-tooth'],
         ] as $kpi)
@@ -102,7 +107,11 @@
         </div>
 
         {{-- ================= RIGHT COLUMN ================= --}}
-        <div class="space-y-4">
+<div class="space-y-4">
+
+    <div wire:loading wire:target="fetchData">
+        <x-skeleton-subprojects-dashboard />
+    </div>
 
             {{-- ================= PROJECT STATUS (IMPROVED UX) ================= --}}
             @php
@@ -221,6 +230,8 @@
 
     </div>
 
+    </div>
+
 </div>
 
 <script>
@@ -229,6 +240,14 @@
             renderClusterPerformanceChart();
             renderRiskAssessmentChart();
         }, 200);
+
+        // Listen for chart refresh
+        Livewire.on('refresh-chart', () => {
+            setTimeout(() => {
+                renderClusterPerformanceChart();
+                renderRiskAssessmentChart();
+            }, 100);
+        });
     });
 
     /* =========================

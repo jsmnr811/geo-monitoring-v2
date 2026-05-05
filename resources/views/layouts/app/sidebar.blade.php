@@ -23,13 +23,13 @@
                     :current="request()->routeIs('synced-albums')" wire:navigate>
                     {{ __('Synced Albums') }}
                 </flux:sidebar.item> --}}
-                <flux:sidebar.item icon="layout-grid" :href="route('subprojects')"
-                    :current="request()->routeIs('subprojects')" wire:navigate>
-                    {{ __('Subprojects') }}
-                </flux:sidebar.item>
                 <flux:sidebar.item icon="chart-bar" :href="route('subprojects-dashboard')"
                     :current="request()->routeIs('subprojects-dashboard')" wire:navigate>
                     {{ __('Subprojects Dashboard') }}
+                </flux:sidebar.item>
+                <flux:sidebar.item icon="layout-grid" :href="route('subprojects')"
+                    :current="request()->routeIs('subprojects')" wire:navigate>
+                    {{ __('Subprojects') }}
                 </flux:sidebar.item>
                 <flux:sidebar.item
                     icon="command-line"
@@ -37,6 +37,9 @@
                     Manual Sync
                 </flux:sidebar.item>
             </flux:sidebar.group>
+
+            {{-- PROGRESS ONLY TOGGLE --}}
+            @livewire('progress-only-toggle')
         </flux:sidebar.nav>
 
         <flux:spacer />
@@ -174,7 +177,6 @@
             });
 
         });
-        
     </script>
 
     @livewireScripts

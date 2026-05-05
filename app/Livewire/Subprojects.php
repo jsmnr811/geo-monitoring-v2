@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\SidlanProject;
+use App\Services\GmsComplianceService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
@@ -15,6 +16,8 @@ use Livewire\WithPagination;
 class Subprojects extends Component
 {
     use WithPagination;
+
+    protected $listeners = ['progressOnlyModeChanged' => 'onProgressOnlyModeChanged'];
 
     protected string $paginationTheme = 'tailwind';
 
@@ -59,12 +62,15 @@ class Subprojects extends Component
         $this->js('$wire.fetchData()');
     }
 
-
-
     public function refreshData()
     {
         $this->loading = true;
         $this->js('$wire.fetchData()');
+    }
+
+    public function onProgressOnlyModeChanged()
+    {
+        $this->js('window.location.reload()');
     }
 
     public function fetchData()
@@ -129,7 +135,6 @@ class Subprojects extends Component
                 $currentPage,
                 ['path' => request()->url(), 'pageName' => 'page']
             );
-
         } catch (\Throwable $e) {
             Log::error('Subprojects error: '.$e->getMessage());
 
@@ -198,152 +203,193 @@ class Subprojects extends Component
         }
     }
 
+    // protected function computeGmsComplianceRating(SidlanProject $project): float
+    // {
+    //     $spId = $project->sp_id;
+    //     if (! $spId) {
+    //         return 0.0;
+    //     }
+
+    //     try {
+    //         // Fetch albums (eager loaded)
+    //         $albums = $project->gmsAlbums->toArray();
+
+    //         // Fetch progress (eager loaded)
+    //         $progress = $project->progress;
+
+    //         // Fetch justifications (eager loaded)
+    //         $justifications = $project->justifications->pluck('issue_type')->toArray();
+
+    //         // Check album status
+    //         $hasBasedPhotos = false;
+    //         $hasCompleted = false;
+    //         $stage = strtolower($project->stage ?? '');
+
+    //         foreach ($albums as $album) {
+    //             $itemOfWork = isset($album['item_of_work']) ? strtolower($album['item_of_work']) : '';
+    //             if ($itemOfWork === 'based photos') {
+    //                 $hasBasedPhotos = true;
+    //             }
+    //             if ($itemOfWork === 'completed') {
+    //                 $hasCompleted = true;
+    //             }
+    //         }
+
+    //         // Compute progress analytics
+    //         $progressAnalytics = [
+    //             'total_months_with_progress' => 0,
+    //             'progress_with_albums' => 0,
+    //             'progress_months_with_sufficient_geotags' => 0,
+    //         ];
+
+    //         $monthsWithProgressNoAlbum = [];
+
+    //         if ($progress) {
+    //             // Collect months with progress (only where actual > 0)
+    //             $progressMonths = [];
+    //             foreach (($progress->accomplishment_dates ?? []) as $date) {
+    //                 $month = date('Y-m', strtotime($date));
+    //                 $progressDate = $date;
+    //                 $report = $progress->progress_report[$progressDate] ?? [];
+    //                 $actualValue = $report['actual'] ?? 0;
+    //                 if (is_numeric($actualValue) && $actualValue > 0) {
+    //                     $progressMonths[$month] = true;
+    //                 }
+    //             }
+    //             $progressAnalytics['total_months_with_progress'] = count($progressMonths);
+
+    //             // Group albums by month
+    //             $groupedAlbums = [];
+    //             foreach ($albums as $album) {
+    //                 if (($album['sp_id'] ?? null) !== $spId) {
+    //                     continue;
+    //                 }
+    //                 if (empty($album['report_date'])) {
+    //                     continue;
+    //                 }
+    //                 $timestamp = strtotime($album['report_date']);
+    //                 if (! $timestamp) {
+    //                     continue;
+    //                 }
+    //                 $monthKey = date('Y-m', $timestamp);
+    //                 $groupedAlbums[$monthKey][] = $album;
+    //             }
+
+    //             // Check each progress month
+    //             foreach ($progressMonths as $month => $true) {
+    //                 $albumsForMonth = $groupedAlbums[$month] ?? [];
+    //                 if (! empty($albumsForMonth)) {
+    //                     $progressAnalytics['progress_with_albums']++;
+
+    //                     $totalGeotags = 0;
+    //                     foreach ($albumsForMonth as $album) {
+    //                         $totalGeotags += (int) ($album['geotag_count'] ?? 0);
+    //                     }
+    //                     if ($totalGeotags >= 500) {
+    //                         $progressAnalytics['progress_months_with_sufficient_geotags']++;
+    //                     }
+    //                 } else {
+    //                     $monthsWithProgressNoAlbum[] = $month;
+    //                 }
+    //             }
+    //         }
+
+    //         // Calculate scores to match gms-compliance component
+    //         $progressMonths = $progressAnalytics['total_months_with_progress'];
+    //         $albumsMonths = $progressAnalytics['progress_with_albums'];
+    //         $sufficientGeotagsMonths = $progressAnalytics['progress_months_with_sufficient_geotags'];
+
+    //         // Calculate scores rounded to 2 decimal places for consistency
+    //         $geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
+    //         $progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
+
+    //         // Determine applicable components
+    //         $applicable = [
+    //             'based_photos' => true,
+    //             'completed_album' => strtolower($stage) === 'completed',
+    //             'geotag' => $progressMonths > 0,
+    //             'progress_album' => $progressMonths > 0,
+    //         ];
+
+    //         // Calculate weights based on stage
+    //         $basedPhotosWeight = strtolower($stage) === 'construction' ? 20 : 10;
+
+    //         // Calculate max possible score based on applicable components
+    //         $maxScore = 0;
+    //         if ($applicable['based_photos']) {
+    //             $maxScore += $basedPhotosWeight;
+    //         }
+    //         if ($applicable['completed_album']) {
+    //             $maxScore += 10;
+    //         }
+    //         if ($applicable['geotag']) {
+    //             $maxScore += 30;
+    //         }
+    //         if ($applicable['progress_album']) {
+    //             $maxScore += 50;
+    //         }
+
+    //         // Calculate achieved score
+    //         $achieved = 0;
+    //         if ($hasBasedPhotos) {
+    //             $achieved += $basedPhotosWeight;
+    //         }
+    //         if ($applicable['completed_album'] && $hasCompleted) {
+    //             $achieved += 10;
+    //         }
+    //         $achieved += $geotagScore;
+    //         $achieved += $progressAlbumScore;
+
+    //         // Calculate total score as percentage
+    //         $totalScore = $maxScore > 0 ? round(($achieved / $maxScore) * 100, 2) : 0;
+
+    //         return $totalScore;
+    //     } catch (\Throwable $e) {
+    //         Log::error('Error computing GMS compliance rating for '.$spId.': '.$e->getMessage());
+
+    //         return 0.0;
+    //     }
+    // }
+
     protected function computeGmsComplianceRating(SidlanProject $project): float
     {
-        $spId = $project->sp_id;
-        if (! $spId) {
-            return 0.0;
+        return app(GmsComplianceService::class)->compute($project);
+    }
+
+    public function statusLabel(float $score): string
+    {
+        if ($score >= 85) {
+            return 'Excellent';
+        }
+        if ($score >= 70) {
+            return 'Good';
+        }
+        if ($score >= 55) {
+            return 'Fair';
+        }
+        if ($score >= 40) {
+            return 'Poor';
         }
 
-        try {
-            // Fetch albums (eager loaded)
-            $albums = $project->gmsAlbums->toArray();
+        return 'Critical';
+    }
 
-            // Fetch progress (eager loaded)
-            $progress = $project->progress;
-
-            // Fetch justifications (eager loaded)
-            $justifications = $project->justifications->pluck('issue_type')->toArray();
-
-            // Check album status
-            $hasBasedPhotos = false;
-            $hasCompleted = false;
-            $stage = strtolower($project->stage ?? '');
-
-            foreach ($albums as $album) {
-                $itemOfWork = isset($album['item_of_work']) ? strtolower($album['item_of_work']) : '';
-                if ($itemOfWork === 'based photos') {
-                    $hasBasedPhotos = true;
-                }
-                if ($itemOfWork === 'completed') {
-                    $hasCompleted = true;
-                }
-            }
-
-            // Compute progress analytics
-            $progressAnalytics = [
-                'total_months_with_progress' => 0,
-                'progress_with_albums' => 0,
-                'progress_months_with_sufficient_geotags' => 0,
-            ];
-
-            $monthsWithProgressNoAlbum = [];
-
-            if ($progress) {
-                // Collect months with progress (only where actual > 0)
-                $progressMonths = [];
-                foreach (($progress->accomplishment_dates ?? []) as $date) {
-                    $month = date('Y-m', strtotime($date));
-                    $progressDate = $date;
-                    $report = $progress->progress_report[$progressDate] ?? [];
-                    $actualValue = $report['actual'] ?? 0;
-                    if (is_numeric($actualValue) && $actualValue > 0) {
-                        $progressMonths[$month] = true;
-                    }
-                }
-                $progressAnalytics['total_months_with_progress'] = count($progressMonths);
-
-                // Group albums by month
-                $groupedAlbums = [];
-                foreach ($albums as $album) {
-                    if (($album['sp_id'] ?? null) !== $spId) {
-                        continue;
-                    }
-                    if (empty($album['report_date'])) {
-                        continue;
-                    }
-                    $timestamp = strtotime($album['report_date']);
-                    if (! $timestamp) {
-                        continue;
-                    }
-                    $monthKey = date('Y-m', $timestamp);
-                    $groupedAlbums[$monthKey][] = $album;
-                }
-
-                // Check each progress month
-                foreach ($progressMonths as $month => $true) {
-                    $albumsForMonth = $groupedAlbums[$month] ?? [];
-                    if (! empty($albumsForMonth)) {
-                        $progressAnalytics['progress_with_albums']++;
-
-                        $totalGeotags = 0;
-                        foreach ($albumsForMonth as $album) {
-                            $totalGeotags += (int) ($album['geotag_count'] ?? 0);
-                        }
-                        if ($totalGeotags >= 500) {
-                            $progressAnalytics['progress_months_with_sufficient_geotags']++;
-                        }
-                    } else {
-                        $monthsWithProgressNoAlbum[] = $month;
-                    }
-                }
-            }
-
-            // Calculate scores to match gms-compliance component
-            $progressMonths = $progressAnalytics['total_months_with_progress'];
-            $albumsMonths = $progressAnalytics['progress_with_albums'];
-            $sufficientGeotagsMonths = $progressAnalytics['progress_months_with_sufficient_geotags'];
-
-            // Calculate scores rounded to 2 decimal places for consistency
-            $geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
-            $progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
-
-            // Determine applicable components
-            $applicable = [
-                'based_photos' => true,
-                'completed_album' => strtolower($stage) === 'completed',
-                'geotag' => $progressMonths > 0,
-                'progress_album' => $progressMonths > 0,
-            ];
-
-            // Calculate weights based on stage
-            $basedPhotosWeight = strtolower($stage) === 'construction' ? 20 : 10;
-
-            // Calculate max possible score based on applicable components
-            $maxScore = 0;
-            if ($applicable['based_photos']) {
-                $maxScore += $basedPhotosWeight;
-            }
-            if ($applicable['completed_album']) {
-                $maxScore += 10;
-            }
-            if ($applicable['geotag']) {
-                $maxScore += 30;
-            }
-            if ($applicable['progress_album']) {
-                $maxScore += 50;
-            }
-
-            // Calculate achieved score
-            $achieved = 0;
-            if ($hasBasedPhotos) {
-                $achieved += $basedPhotosWeight;
-            }
-            if ($applicable['completed_album'] && $hasCompleted) {
-                $achieved += 10;
-            }
-            $achieved += $geotagScore;
-            $achieved += $progressAlbumScore;
-
-            // Calculate total score as percentage
-            $totalScore = $maxScore > 0 ? round(($achieved / $maxScore) * 100, 2) : 0;
-
-            return $totalScore;
-        } catch (\Throwable $e) {
-            Log::error('Error computing GMS compliance rating for '.$spId.': '.$e->getMessage());
-
-            return 0.0;
+    public function statusColor(float $score): string
+    {
+        if ($score >= 85) {
+            return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200';
         }
+        if ($score >= 70) {
+            return 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200';
+        }
+        if ($score >= 55) {
+            return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200';
+        }
+        if ($score >= 40) {
+            return 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200';
+        }
+
+        return 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200';
     }
 
     public function render()

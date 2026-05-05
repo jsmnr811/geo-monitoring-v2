@@ -172,12 +172,7 @@
     default => 'bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-zinc-300',
     };
 
-    $ratingColor = match (true) {
-    $rating >= 90 => 'text-green-600',
-    $rating >= 70 => 'text-blue-600',
-    $rating >= 50 => 'text-yellow-600',
-    default => 'text-red-600',
-    };
+
 
     @endphp
 
@@ -210,7 +205,7 @@
 
         <div class="flex flex-col items-end gap-2 shrink-0">
             <div class="flex flex-col items-end gap-1">
-                <span class="px-2.5 py-1 rounded-lg text-sm font-bold shadow-sm border {{ $rating >= 90 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : ($rating >= 70 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : ($rating >= 50 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300')) }}">
+                <span class="px-2.5 py-1 rounded-lg text-sm font-bold shadow-sm border {{ $this->statusColor($rating) }}">
                     {{ number_format($rating, 2) }}%
                 </span>
                 <p class="text-xs text-gray-500 dark:text-zinc-400">
@@ -354,3 +349,11 @@
 @endif
 
 </div>
+
+<script>
+window.addEventListener('storage', (e) => {
+    if (e.key === 'progressOnlyModeChanged') {
+        window.location.reload();
+    }
+});
+</script>

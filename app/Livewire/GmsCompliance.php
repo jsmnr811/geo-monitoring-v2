@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\DataQualityJustification;
 use App\Models\GmsAlbum;
+use App\Models\GmsUserPreference;
 use App\Models\SidlanProgress;
 use App\Models\SidlanProject;
 use App\Models\User;
@@ -19,6 +20,8 @@ use Livewire\Component;
 #[Title('GMS Album Compliance')]
 class GmsCompliance extends Component
 {
+    protected $listeners = ['progressOnlyModeChanged' => 'handleProgressOnlyModeChanged'];
+
     public string $spId = '';
 
     public string $projectName = '';
@@ -40,6 +43,8 @@ class GmsCompliance extends Component
     public array $expandedTimelineMonths = [];
 
     public string $error = '';
+
+    public bool $progressOnlyMode = false;
 
     public function toggleTimelineMonth($monthKey)
     {
@@ -98,6 +103,13 @@ class GmsCompliance extends Component
     public function mount(string $spId): void
     {
         $this->spId = $spId;
+
+        // Load user's progress only preference
+        $preference = GmsUserPreference::firstOrCreate(
+            ['user_id' => Auth::id()],
+            ['progress_only' => false]
+        );
+        $this->progressOnlyMode = $preference->progress_only;
 
         $this->fetchSidlanData();
 
@@ -384,150 +396,499 @@ class GmsCompliance extends Component
         return $grouped;
     }
 
+    // private function computeAnalytics(): void
+    // {
+    //     $this->analytics = [];
+
+    //     // Analyze GMS Album Compliance only
+    //     if (! empty($this->sidlanData)) {
+    //         $compliance = [
+    //             'issues' => [],
+    //         ];
+
+    //         $stage = strtolower($this->sidlanData['stage'] ?? '');
+
+    //         // GMS Album Compliance Issues - specific months with insufficient geotags
+    //         foreach ($this->progressAnalytics['months_with_insufficient_geotags'] as $month) {
+    //             if (! in_array('insufficient_geotags_'.$month, $this->justifications)) {
+    //                 try {
+    //                     $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
+    //                 } catch (\Exception $e) {
+    //                     $formattedMonth = $month;
+    //                 }
+    //                 $compliance['issues'][] = ['type' => 'insufficient_geotags_'.$month, 'text' => $formattedMonth.' has insufficient geotags (need ≥500)'];
+    //             }
+    //         }
+
+    //         // Missing albums for specific months with progress
+    //         foreach ($this->monthsWithProgressNoAlbum as $month) {
+    //             if (! in_array('missing_album_'.$month, $this->justifications)) {
+    //                 try {
+    //                     $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
+    //                 } catch (\Exception $e) {
+    //                     $formattedMonth = $month;
+    //                 }
+    //                 $compliance['issues'][] = ['type' => 'missing_album_'.$month, 'text' => 'Missing album for '.$formattedMonth];
+    //             }
+    //         }
+
+    //         // Calculate GMS Album Compliance score (100% weight)
+    //         $album_score = 0;
+
+    //         // Based Photos: 20% if present or justified
+    //         $based_ok = $this->hasBasedPhotos || in_array('based_photos_missing', $this->justifications);
+    //         if ($based_ok) {
+    //             $album_score += 20;
+    //         }
+
+    //         // Completed Album: 10% only if stage is completed and present, or justified
+    //         $completed_ok = (strtolower($stage) === 'completed' && $this->hasCompleted) || in_array('completed_album_missing', $this->justifications);
+    //         if ($completed_ok) {
+    //             $album_score += 10;
+    //         }
+
+    //         // Geotag compliance: 30% proportional to months with ≥500 geotags
+    //         if ($this->progressAnalytics['total_months_with_progress'] > 0) {
+    //             $hasUnjustifiedGeotagIssues = ! empty(array_filter($this->progressAnalytics['months_with_insufficient_geotags'], function ($month) {
+    //                 return ! in_array('insufficient_geotags_'.$month, $this->justifications) && ! in_array('gms_album_compliance', $this->justifications);
+    //             }));
+
+    //             if ($hasUnjustifiedGeotagIssues) {
+    //                 $geotagScore = ($this->progressAnalytics['progress_months_with_sufficient_geotags'] / $this->progressAnalytics['total_months_with_progress']) * 30;
+    //             } else {
+    //                 $geotagScore = 30; // no unjustified issues = full score
+    //             }
+    //             $album_score += $geotagScore;
+    //         }
+
+    //         // Progress album compliance: 50% proportional to months with albums
+    //         $progressScore = 0; // Initialize to avoid undefined variable error
+    //         if ($this->progressAnalytics['total_months_with_progress'] > 0) {
+    //             $hasUnjustifiedAlbumIssues = ! empty(array_filter($this->monthsWithProgressNoAlbum, function ($month) {
+    //                 return ! in_array('missing_album_'.$month, $this->justifications);
+    //             }));
+
+    //             if ($hasUnjustifiedAlbumIssues) {
+    //                 $progressScore = ($this->progressAnalytics['progress_with_albums'] / $this->progressAnalytics['total_months_with_progress']) * 50;
+    //             } else {
+    //                 $progressScore = 50; // no unjustified issues = full score
+    //             }
+    //             $album_score += $progressScore;
+    //         }
+    //         $compliance['progress_score'] = round($progressScore, 1);
+
+    //         $compliance['album_score'] = $album_score;
+
+    //         // GMS Album Compliance is now 100% of the score
+    //         $compliance['overall_pct'] = $album_score;
+
+    //         $this->analytics[$this->sidlanData['sp_id'] ?? 'unknown'] = $compliance;
+    //     }
+    // }
+
+    // private function computeScores(): void
+    // {
+    //     // Scoring breakdown
+    //     $progressMonths = $this->progressAnalytics['total_months_with_progress'] ?? 0;
+    //     $albumsMonths = $this->progressAnalytics['progress_with_albums'] ?? 0;
+    //     $sufficientGeotagsMonths = $this->progressAnalytics['progress_months_with_sufficient_geotags'] ?? 0;
+
+    //     // Calculate scores rounded to 2 decimal places for consistency
+    //     $this->geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
+    //     $this->progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
+
+    //     // Determine applicable components
+    //     $this->applicable = [
+    //         'based_photos' => true,
+    //         'completed_album' => strtolower($this->stage) === 'completed',
+    //         'geotag' => $progressMonths > 0,
+    //         'progress_album' => $progressMonths > 0,
+    //     ];
+
+    //     // Calculate weights based on stage
+    //     $this->basedPhotosWeight = strtolower($this->stage) === 'construction' ? 20 : 10;
+
+    //     // Calculate max possible score based on applicable components
+    //     $this->maxScore = 0;
+    //     if ($this->applicable['based_photos']) {
+    //         $this->maxScore += $this->basedPhotosWeight;
+    //     }
+    //     if ($this->applicable['completed_album']) {
+    //         $this->maxScore += 10;
+    //     }
+    //     if ($this->applicable['geotag']) {
+    //         $this->maxScore += 30;
+    //     }
+    //     if ($this->applicable['progress_album']) {
+    //         $this->maxScore += 50;
+    //     }
+
+    //     // Calculate achieved score
+    //     $this->achieved = 0;
+    //     if ($this->hasBasedPhotos) {
+    //         $this->achieved += $this->basedPhotosWeight;
+    //     }
+    //     if ($this->applicable['completed_album'] && $this->hasCompleted) {
+    //         $this->achieved += 10;
+    //     }
+    //     $this->achieved += $this->geotagScore;
+    //     $this->achieved += $this->progressAlbumScore;
+
+    //     // Calculate total score as percentage
+    //     $this->totalScore = $this->maxScore > 0 ? round(($this->achieved / $this->maxScore) * 100, 2) : 0;
+
+    //     // Additional scores for breakdown
+    //     $this->basicScore = ($this->hasBasedPhotos ? $this->basedPhotosWeight : 0) + (($this->applicable['completed_album'] && $this->hasCompleted) ? 10 : 0);
+    //     $this->progressScore = $this->geotagScore + $this->progressAlbumScore;
+    // }
+
     private function computeAnalytics(): void
     {
         $this->analytics = [];
 
-        // Analyze GMS Album Compliance only
-        if (! empty($this->sidlanData)) {
-            $compliance = [
-                'issues' => [],
-            ];
+        if (empty($this->sidlanData)) {
+            return;
+        }
 
-            $stage = strtolower($this->sidlanData['stage'] ?? '');
+        $compliance = [
+            'issues' => [],
+        ];
 
-            // GMS Album Compliance Issues - specific months with insufficient geotags
-            foreach ($this->progressAnalytics['months_with_insufficient_geotags'] as $month) {
-                if (! in_array('insufficient_geotags_'.$month, $this->justifications)) {
-                    try {
-                        $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
-                    } catch (\Exception $e) {
-                        $formattedMonth = $month;
-                    }
-                    $compliance['issues'][] = ['type' => 'insufficient_geotags_'.$month, 'text' => $formattedMonth.' has insufficient geotags (need ≥500)'];
+        $stage = strtolower($this->sidlanData['stage'] ?? '');
+        $progressMonths = $this->progressAnalytics['total_months_with_progress'] ?? 0;
+
+        /**
+         * -----------------------------
+         * 🚨 ISSUE DETECTION (UNCHANGED)
+         * -----------------------------
+         */
+
+        // Insufficient geotags
+        foreach ($this->progressAnalytics['months_with_insufficient_geotags'] as $month) {
+            if (! in_array('insufficient_geotags_'.$month, $this->justifications)) {
+                try {
+                    $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
+                } catch (\Exception $e) {
+                    $formattedMonth = $month;
                 }
-            }
 
-            // Missing albums for specific months with progress
-            foreach ($this->monthsWithProgressNoAlbum as $month) {
-                if (! in_array('missing_album_'.$month, $this->justifications)) {
-                    try {
-                        $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
-                    } catch (\Exception $e) {
-                        $formattedMonth = $month;
-                    }
-                    $compliance['issues'][] = ['type' => 'missing_album_'.$month, 'text' => 'Missing album for '.$formattedMonth];
+                $compliance['issues'][] = [
+                    'type' => 'insufficient_geotags_'.$month,
+                    'text' => $formattedMonth.' has insufficient geotags (need ≥500)',
+                ];
+            }
+        }
+
+        // Missing albums
+        foreach ($this->monthsWithProgressNoAlbum as $month) {
+            if (! in_array('missing_album_'.$month, $this->justifications)) {
+                try {
+                    $formattedMonth = Carbon::createFromFormat('Y-m', $month)->format('F Y');
+                } catch (\Exception $e) {
+                    $formattedMonth = $month;
                 }
+
+                $compliance['issues'][] = [
+                    'type' => 'missing_album_'.$month,
+                    'text' => 'Missing album for '.$formattedMonth,
+                ];
             }
+        }
 
-            // Calculate GMS Album Compliance score (100% weight)
-            $album_score = 0;
-
-            // Based Photos: 20% if present or justified
-            $based_ok = $this->hasBasedPhotos || in_array('based_photos_missing', $this->justifications);
-            if ($based_ok) {
-                $album_score += 20;
-            }
-
-            // Completed Album: 10% only if stage is completed and present, or justified
-            $completed_ok = (strtolower($stage) === 'completed' && $this->hasCompleted) || in_array('completed_album_missing', $this->justifications);
-            if ($completed_ok) {
-                $album_score += 10;
-            }
-
-            // Geotag compliance: 30% proportional to months with ≥500 geotags
-            if ($this->progressAnalytics['total_months_with_progress'] > 0) {
-                $hasUnjustifiedGeotagIssues = ! empty(array_filter($this->progressAnalytics['months_with_insufficient_geotags'], function ($month) {
-                    return ! in_array('insufficient_geotags_'.$month, $this->justifications) && ! in_array('gms_album_compliance', $this->justifications);
-                }));
-
-                if ($hasUnjustifiedGeotagIssues) {
-                    $geotagScore = ($this->progressAnalytics['progress_months_with_sufficient_geotags'] / $this->progressAnalytics['total_months_with_progress']) * 30;
-                } else {
-                    $geotagScore = 30; // no unjustified issues = full score
-                }
-                $album_score += $geotagScore;
-            }
-
-            // Progress album compliance: 50% proportional to months with albums
-            $progressScore = 0; // Initialize to avoid undefined variable error
-            if ($this->progressAnalytics['total_months_with_progress'] > 0) {
-                $hasUnjustifiedAlbumIssues = ! empty(array_filter($this->monthsWithProgressNoAlbum, function ($month) {
-                    return ! in_array('missing_album_'.$month, $this->justifications);
-                }));
-
-                if ($hasUnjustifiedAlbumIssues) {
-                    $progressScore = ($this->progressAnalytics['progress_with_albums'] / $this->progressAnalytics['total_months_with_progress']) * 50;
-                } else {
-                    $progressScore = 50; // no unjustified issues = full score
-                }
-                $album_score += $progressScore;
-            }
-            $compliance['progress_score'] = round($progressScore, 1);
-
-            $compliance['album_score'] = $album_score;
-
-            // GMS Album Compliance is now 100% of the score
-            $compliance['overall_pct'] = $album_score;
+        /**
+         * -----------------------------
+         * 🎯 SCORING
+         * -----------------------------
+         */
+        if ($progressMonths <= 0) {
+            $compliance['album_score'] = 0;
+            $compliance['overall_pct'] = 0;
 
             $this->analytics[$this->sidlanData['sp_id'] ?? 'unknown'] = $compliance;
+
+            return;
         }
+
+        $album_score = 0;
+
+        if ($this->progressOnlyMode) {
+
+            /**
+             * 🔵 PROGRESS-ONLY MODE
+             * (Geotag 30%, Progress Albums 70%)
+             */
+
+            // Geotag
+            $hasUnjustifiedGeotagIssues = ! empty(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => ! $this->isJustified('insufficient_geotags_'.$m)
+            ));
+
+            $justifiedGeotagCount = count(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => $this->isJustified('insufficient_geotags_'.$m)
+            ));
+
+            $effectiveSufficientGeotags = $this->progressAnalytics['progress_months_with_sufficient_geotags'] + $justifiedGeotagCount;
+
+            $geotagScore = $hasUnjustifiedGeotagIssues
+                ? ($effectiveSufficientGeotags / $progressMonths) * 30
+                : 30;
+
+            // Progress Albums
+            $hasUnjustifiedAlbumIssues = ! empty(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => ! $this->isJustified('missing_album_'.$m)
+            ));
+
+            $justifiedAlbumCount = count(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => $this->isJustified('missing_album_'.$m)
+            ));
+
+            $effectiveAlbums = $this->progressAnalytics['progress_with_albums'] + $justifiedAlbumCount;
+
+            $progressScore = $hasUnjustifiedAlbumIssues
+                ? ($effectiveAlbums / $progressMonths) * 70
+                : 70;
+
+            $album_score = $geotagScore + $progressScore;
+
+            $compliance['geotag_score'] = round($geotagScore, 1);
+            $compliance['progress_score'] = round($progressScore, 1);
+        } else {
+
+            /**
+             * 🟢 DEFAULT MODE
+             */
+
+            // 🎯 Dynamic weights
+            if ($stage === 'construction') {
+                $basedWeight = 20;
+                $completedWeight = 0;
+            } else {
+                $basedWeight = 10;
+                $completedWeight = 10;
+            }
+
+            // Based Photos
+            $based_ok = $this->hasBasedPhotos || in_array('based_photos_missing', $this->justifications);
+            if ($based_ok) {
+                $album_score += $basedWeight;
+            }
+
+            // Completed Album
+            if ($completedWeight > 0) {
+                $completed_ok =
+                    ($stage === 'completed' && $this->hasCompleted) ||
+                    in_array('completed_album_missing', $this->justifications);
+
+                if ($completed_ok) {
+                    $album_score += $completedWeight;
+                }
+            }
+
+            // Geotag (30%)
+            $hasUnjustifiedGeotagIssues = ! empty(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => ! $this->isJustified('insufficient_geotags_'.$m)
+            ));
+
+            $justifiedGeotagCount = count(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => $this->isJustified('insufficient_geotags_'.$m)
+            ));
+
+            $effectiveSufficientGeotags = $this->progressAnalytics['progress_months_with_sufficient_geotags'] + $justifiedGeotagCount;
+
+            $geotagScore = $hasUnjustifiedGeotagIssues
+                ? ($effectiveSufficientGeotags / $progressMonths) * 30
+                : 30;
+
+            $album_score += $geotagScore;
+
+            // Progress Albums (50%)
+            $hasUnjustifiedAlbumIssues = ! empty(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => ! $this->isJustified('missing_album_'.$m)
+            ));
+
+            $justifiedAlbumCount = count(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => $this->isJustified('missing_album_'.$m)
+            ));
+
+            $effectiveAlbums = $this->progressAnalytics['progress_with_albums'] + $justifiedAlbumCount;
+
+            $progressScore = $hasUnjustifiedAlbumIssues
+                ? ($effectiveAlbums / $progressMonths) * 50
+                : 50;
+
+            $album_score += $progressScore;
+
+            $compliance['geotag_score'] = round($geotagScore, 1);
+            $compliance['progress_score'] = round($progressScore, 1);
+        }
+
+        /**
+         * -----------------------------
+         * 📊 FINAL OUTPUT
+         * -----------------------------
+         */
+        $compliance['album_score'] = round($album_score, 2);
+        $compliance['overall_pct'] = min(100, round($album_score, 2));
+
+        $this->analytics[$this->sidlanData['sp_id'] ?? 'unknown'] = $compliance;
     }
 
     private function computeScores(): void
     {
-        // Scoring breakdown
         $progressMonths = $this->progressAnalytics['total_months_with_progress'] ?? 0;
         $albumsMonths = $this->progressAnalytics['progress_with_albums'] ?? 0;
         $sufficientGeotagsMonths = $this->progressAnalytics['progress_months_with_sufficient_geotags'] ?? 0;
 
-        // Calculate scores rounded to 2 decimal places for consistency
-        $this->geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
-        $this->progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
+        // Avoid division by zero
+        if ($progressMonths <= 0) {
+            $this->geotagScore = 0;
+            $this->progressAlbumScore = 0;
+            $this->totalScore = 0;
 
-        // Determine applicable components
-        $this->applicable = [
-            'based_photos' => true,
-            'completed_album' => strtolower($this->stage) === 'completed',
-            'geotag' => $progressMonths > 0,
-            'progress_album' => $progressMonths > 0,
-        ];
-
-        // Calculate weights based on stage
-        $this->basedPhotosWeight = strtolower($this->stage) === 'construction' ? 20 : 10;
-
-        // Calculate max possible score based on applicable components
-        $this->maxScore = 0;
-        if ($this->applicable['based_photos']) {
-            $this->maxScore += $this->basedPhotosWeight;
-        }
-        if ($this->applicable['completed_album']) {
-            $this->maxScore += 10;
-        }
-        if ($this->applicable['geotag']) {
-            $this->maxScore += 30;
-        }
-        if ($this->applicable['progress_album']) {
-            $this->maxScore += 50;
+            return;
         }
 
-        // Calculate achieved score
-        $this->achieved = 0;
-        if ($this->hasBasedPhotos) {
-            $this->achieved += $this->basedPhotosWeight;
-        }
-        if ($this->applicable['completed_album'] && $this->hasCompleted) {
-            $this->achieved += 10;
-        }
-        $this->achieved += $this->geotagScore;
-        $this->achieved += $this->progressAlbumScore;
+        if ($this->progressOnlyMode) {
+            // ✅ NEW MODE: Progress-only (30% / 70%)
 
-        // Calculate total score as percentage
-        $this->totalScore = $this->maxScore > 0 ? round(($this->achieved / $this->maxScore) * 100, 2) : 0;
+            // Check for unjustified geotag issues
+            $hasUnjustifiedGeotagIssues = ! empty(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => ! $this->isJustified('insufficient_geotags_'.$m)
+            ));
 
-        // Additional scores for breakdown
-        $this->basicScore = ($this->hasBasedPhotos ? $this->basedPhotosWeight : 0) + (($this->applicable['completed_album'] && $this->hasCompleted) ? 10 : 0);
-        $this->progressScore = $this->geotagScore + $this->progressAlbumScore;
+            $justifiedGeotagCount = count(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => $this->isJustified('insufficient_geotags_'.$m)
+            ));
+
+            $effectiveSufficientGeotags = $this->progressAnalytics['progress_months_with_sufficient_geotags'] + $justifiedGeotagCount;
+
+            $this->geotagScore = $hasUnjustifiedGeotagIssues
+                ? ($effectiveSufficientGeotags / $progressMonths) * 30
+                : 30;
+
+            // Check for unjustified album issues
+            $hasUnjustifiedAlbumIssues = ! empty(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => ! $this->isJustified('missing_album_'.$m)
+            ));
+
+            $justifiedAlbumCount = count(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => $this->isJustified('missing_album_'.$m)
+            ));
+
+            $effectiveAlbums = $this->progressAnalytics['progress_with_albums'] + $justifiedAlbumCount;
+
+            $this->progressAlbumScore = $hasUnjustifiedAlbumIssues
+                ? ($effectiveAlbums / $progressMonths) * 70
+                : 70;
+
+            $this->maxScore = 100;
+            $this->achieved = $this->geotagScore + $this->progressAlbumScore;
+            $this->totalScore = round($this->achieved, 2);
+
+            // Optional breakdown
+            $this->basicScore = 0;
+            $this->progressScore = $this->achieved;
+        } else {
+            // ✅ EXISTING MODE (updated to account for justifications)
+
+            // Check for unjustified geotag issues
+            $hasUnjustifiedGeotagIssues = ! empty(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => ! $this->isJustified('insufficient_geotags_'.$m)
+            ));
+
+            $justifiedGeotagCount = count(array_filter(
+                $this->progressAnalytics['months_with_insufficient_geotags'],
+                fn ($m) => $this->isJustified('insufficient_geotags_'.$m)
+            ));
+
+            $effectiveSufficientGeotags = $this->progressAnalytics['progress_months_with_sufficient_geotags'] + $justifiedGeotagCount;
+
+            $this->geotagScore = $hasUnjustifiedGeotagIssues
+                ? ($effectiveSufficientGeotags / $progressMonths) * 30
+                : 30;
+
+            // Check for unjustified album issues
+            $hasUnjustifiedAlbumIssues = ! empty(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => ! $this->isJustified('missing_album_'.$m)
+            ));
+
+            $justifiedAlbumCount = count(array_filter(
+                $this->monthsWithProgressNoAlbum,
+                fn ($m) => $this->isJustified('missing_album_'.$m)
+            ));
+
+            $effectiveAlbums = $this->progressAnalytics['progress_with_albums'] + $justifiedAlbumCount;
+
+            $this->progressAlbumScore = $hasUnjustifiedAlbumIssues
+                ? ($effectiveAlbums / $progressMonths) * 50
+                : 50;
+
+            $this->applicable = [
+                'based_photos' => true,
+                'completed_album' => strtolower($this->stage) === 'completed',
+                'geotag' => true,
+                'progress_album' => true,
+            ];
+
+            $this->basedPhotosWeight = strtolower($this->stage) === 'construction' ? 20 : 10;
+
+            $this->maxScore = 0;
+            if ($this->applicable['based_photos']) {
+                $this->maxScore += $this->basedPhotosWeight;
+            }
+            if ($this->applicable['completed_album']) {
+                $this->maxScore += 10;
+            }
+            if ($this->applicable['geotag']) {
+                $this->maxScore += 30;
+            }
+            if ($this->applicable['progress_album']) {
+                $this->maxScore += 50;
+            }
+
+            $this->achieved = 0;
+
+            // Include justifications for basic components
+            $based_ok = $this->hasBasedPhotos || in_array('based_photos_missing', $this->justifications);
+            if ($based_ok) {
+                $this->achieved += $this->basedPhotosWeight;
+            }
+
+            if ($this->applicable['completed_album']) {
+                $completed_ok = $this->hasCompleted || in_array('completed_album_missing', $this->justifications);
+                if ($completed_ok) {
+                    $this->achieved += 10;
+                }
+            }
+
+            $this->achieved += $this->geotagScore;
+            $this->achieved += $this->progressAlbumScore;
+
+            $this->totalScore = $this->maxScore > 0
+                ? round(($this->achieved / $this->maxScore) * 100, 2)
+                : 0;
+
+            // Include justifications in basic score calculation
+            $this->basicScore =
+                ($based_ok ? $this->basedPhotosWeight : 0) +
+                (($this->applicable['completed_album'] && ($this->hasCompleted || in_array('completed_album_missing', $this->justifications))) ? 10 : 0);
+
+            $this->progressScore = $this->geotagScore + $this->progressAlbumScore;
+        }
     }
 
     private function computeProgressAnalytics(): void
@@ -589,10 +950,64 @@ class GmsCompliance extends Component
         }
     }
 
+    public function updatedProgressOnlyMode()
+    {
+        // Save the preference
+        $preference = GmsUserPreference::firstOrCreate(
+            ['user_id' => Auth::id()],
+            ['progress_only' => false]
+        );
+        $preference->update(['progress_only' => $this->progressOnlyMode]);
+
+        $this->recalculate();
+    }
+
+    public function handleProgressOnlyModeChanged()
+    {
+        // Reload preference and recalculate
+        $preference = GmsUserPreference::where('user_id', Auth::id())->first();
+        $this->progressOnlyMode = $preference ? $preference->progress_only : false;
+        $this->recalculate();
+    }
+
+    private function recalculate(): void
+    {
+        $this->computeProgressAnalytics();
+        $this->computeAnalytics();
+        $this->computeScores();
+    }
+
     public function justifyIssue(string $type): void
     {
         $this->justifyingIssueType = $type;
         $this->justificationText = '';
+    }
+
+    public function getScore(SidlanProject $project, bool $progressOnlyMode = false): float
+    {
+        $this->sidlanData = $project->toArray();
+        $this->spId = $project->sp_id;
+        $this->stage = $project->stage ?? '';
+
+        $this->progressOnlyMode = $progressOnlyMode;
+
+        // Load SAME DATA as Livewire
+        $this->allAlbums = $project->gmsAlbums->toArray();
+
+        $this->fetchProgressData();
+        $this->loadJustifications(); // 🔥 IMPORTANT
+        $this->checkAlbumStatus();
+
+        $this->computeProgressAnalytics();
+        $this->computeAnalytics();
+        $this->computeScores();
+
+        return (float) $this->totalScore;
+    }
+
+    private function isJustified(string $type): bool
+    {
+        return in_array($type, $this->justifications);
     }
 
     public function saveJustification(): void

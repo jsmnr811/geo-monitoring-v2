@@ -43,4 +43,12 @@ class User extends Authenticatable
             ->map(fn ($word) => Str::substr($word, 0, 1))
             ->implode('');
     }
+
+    /**
+     * Get the user's GMS preferences
+     */
+    public function gmsPreference()
+    {
+        return $this->hasOne(GmsUserPreference::class);
+    }
 }

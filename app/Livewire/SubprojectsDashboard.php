@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\SidlanProject;
+use App\Services\GmsComplianceService;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -12,6 +13,8 @@ use Livewire\Component;
 #[Title('Subprojects Dashboard')]
 class SubprojectsDashboard extends Component
 {
+    protected $listeners = ['progressOnlyModeChanged' => 'onProgressOnlyModeChanged'];
+
     public $data;
 
     public bool $loading = false;
@@ -49,6 +52,11 @@ class SubprojectsDashboard extends Component
         }
     }
 
+    public function onProgressOnlyModeChanged()
+    {
+        $this->js('window.location.reload()');
+    }
+
     public function calculateStats(): void
     {
         if ($this->data->isEmpty()) {
@@ -62,7 +70,7 @@ class SubprojectsDashboard extends Component
         $totalConstruction = 0;
 
         foreach ($this->data as $project) {
-            $rating = $this->computeGmsComplianceRating($project);
+            $rating = app(GmsComplianceService::class)->compute($project);
 
             $cluster = $project->cluster ?? 'Unknown';
             $stage = strtolower($project->stage ?? '');
@@ -102,8 +110,8 @@ class SubprojectsDashboard extends Component
                 'total_projects' => $data['total_projects'],
                 'completed_projects' => $data['completed_projects'],
                 'construction_projects' => $data['construction_projects'],
-                'avg_rating' => round($data['total_rating'] / $data['total_projects'], 1),
-                'completion_rate' => $data['total_projects'] > 0 ? round(($data['completed_projects'] / $data['total_projects']) * 100, 1) : 0,
+                'avg_rating' => round($data['total_rating'] / $data['total_projects'], 2),
+                'completion_rate' => $data['total_projects'] > 0 ? round(($data['completed_projects'] / $data['total_projects']) * 100, 2) : 0,
             ];
         }
 
@@ -120,7 +128,7 @@ class SubprojectsDashboard extends Component
         $this->riskCountsByCluster = [];
 
         foreach ($this->data as $project) {
-            $rating = $this->computeGmsComplianceRating($project);
+            $rating = app(GmsComplianceService::class)->compute($project);
             if ($rating < 20) {
                 $this->ratingDistribution['0-20']++;
             } elseif ($rating < 40) {
@@ -156,178 +164,10 @@ class SubprojectsDashboard extends Component
         // Calculate overall stats
         $this->overallStats = [
             'total_projects' => $totalProjects,
-            'avg_rating' => $totalProjects > 0 ? round($totalRating / $totalProjects, 1) : 0,
+            'avg_rating' => $totalProjects > 0 ? round($totalRating / $totalProjects, 2) : 0,
             'total_completed' => $totalCompleted,
             'total_construction' => $totalConstruction,
         ];
-    }
-
-    protected function computeGmsComplianceRating(object $project): float
-    {
-        $spId = $project->sp_id;
-        if (! $spId) {
-            return 0.0;
-        }
-
-        try {
-            // Validate data types to prevent errors
-            if (! is_array($project->gmsAlbums->toArray())) {
-                \Log::warning('Invalid gmsAlbums data for project '.$spId);
-
-                return 0.0;
-            }
-            // Fetch albums (eager loaded)
-            $albums = $project->gmsAlbums->toArray();
-
-            // Fetch progress (eager loaded)
-            $progress = $project->progress;
-
-            // Fetch justifications (eager loaded)
-            $justifications = [];
-            if ($project->justifications) {
-                $justifications = $project->justifications->pluck('issue_type')->toArray();
-            }
-
-            // Check album status
-            $hasBasedPhotos = false;
-            $hasCompleted = false;
-            $stage = strtolower($project->stage ?? '');
-
-            foreach ($albums as $album) {
-                $itemOfWork = isset($album['item_of_work']) ? strtolower($album['item_of_work']) : '';
-                if ($itemOfWork === 'based photos') {
-                    $hasBasedPhotos = true;
-                }
-                if ($itemOfWork === 'completed') {
-                    $hasCompleted = true;
-                }
-            }
-
-            // Compute progress analytics
-            $progressAnalytics = [
-                'total_months_with_progress' => 0,
-                'progress_with_albums' => 0,
-                'progress_months_with_sufficient_geotags' => 0,
-            ];
-
-            if ($progress && isset($progress->accomplishment_dates) && is_array($progress->accomplishment_dates)) {
-                // Collect months with progress (only where actual > 0)
-                $progressMonths = [];
-                foreach ($progress->accomplishment_dates as $date) {
-                    if (! is_string($date)) {
-                        continue;
-                    }
-                    $month = date('Y-m', strtotime($date));
-                    if (! $month) {
-                        continue;
-                    }
-
-                    $progressDate = $date;
-                    $report = [];
-                    if (isset($progress->progress_report) && is_array($progress->progress_report)) {
-                        $report = $progress->progress_report[$progressDate] ?? [];
-                    }
-
-                    $actualValue = $report['actual'] ?? 0;
-                    if (is_numeric($actualValue) && $actualValue > 0) {
-                        $progressMonths[$month] = true;
-                    }
-                }
-                $progressAnalytics['total_months_with_progress'] = count($progressMonths);
-
-                // Group albums by month
-                $groupedAlbums = [];
-                if (is_array($albums)) {
-                    foreach ($albums as $album) {
-                        if (! is_array($album)) {
-                            continue;
-                        }
-                        if (($album['sp_id'] ?? null) !== $spId) {
-                            continue;
-                        }
-                        if (empty($album['report_date'])) {
-                            continue;
-                        }
-                        $timestamp = strtotime($album['report_date']);
-                        if (! $timestamp) {
-                            continue;
-                        }
-                        $monthKey = date('Y-m', $timestamp);
-                        $groupedAlbums[$monthKey][] = $album;
-                    }
-                }
-
-                // Check each progress month
-                foreach ($progressMonths as $month => $true) {
-                    $albumsForMonth = $groupedAlbums[$month] ?? [];
-                    if (! empty($albumsForMonth)) {
-                        $progressAnalytics['progress_with_albums']++;
-
-                        $totalGeotags = 0;
-                        foreach ($albumsForMonth as $album) {
-                            $totalGeotags += (int) ($album['geotag_count'] ?? 0);
-                        }
-                        if ($totalGeotags >= 500) {
-                            $progressAnalytics['progress_months_with_sufficient_geotags']++;
-                        }
-                    }
-                }
-            }
-
-            // Calculate scores
-            $progressMonths = $progressAnalytics['total_months_with_progress'];
-            $albumsMonths = $progressAnalytics['progress_with_albums'];
-            $sufficientGeotagsMonths = $progressAnalytics['progress_months_with_sufficient_geotags'];
-
-            $geotagScore = $progressMonths > 0 ? round(($sufficientGeotagsMonths / $progressMonths) * 30, 2) : 0;
-            $progressAlbumScore = $progressMonths > 0 ? round(($albumsMonths / $progressMonths) * 50, 2) : 0;
-
-            // Determine applicable components
-            $applicable = [
-                'based_photos' => true,
-                'completed_album' => strtolower($stage) === 'completed',
-                'geotag' => $progressMonths > 0,
-                'progress_album' => $progressMonths > 0,
-            ];
-
-            // Calculate weights
-            $basedPhotosWeight = strtolower($stage) === 'construction' ? 20 : 10;
-
-            // Calculate max possible score
-            $maxScore = 0;
-            if ($applicable['based_photos']) {
-                $maxScore += $basedPhotosWeight;
-            }
-            if ($applicable['completed_album']) {
-                $maxScore += 10;
-            }
-            if ($applicable['geotag']) {
-                $maxScore += 30;
-            }
-            if ($applicable['progress_album']) {
-                $maxScore += 50;
-            }
-
-            // Calculate achieved score
-            $achieved = 0;
-            if ($hasBasedPhotos) {
-                $achieved += $basedPhotosWeight;
-            }
-            if ($applicable['completed_album'] && $hasCompleted) {
-                $achieved += 10;
-            }
-            $achieved += $geotagScore;
-            $achieved += $progressAlbumScore;
-
-            // Calculate total score as percentage
-            $totalScore = $maxScore > 0 ? round(($achieved / $maxScore) * 100, 2) : 0;
-
-            return $totalScore;
-        } catch (\Throwable $e) {
-            Log::error('Error computing GMS compliance rating for '.$spId.': '.$e->getMessage());
-
-            return 0.0;
-        }
     }
 
     public function statusLabel(float $score): string
@@ -404,8 +244,8 @@ class SubprojectsDashboard extends Component
 
         foreach ($this->clusterStats as $cluster => $stats) {
             $categories[] = $cluster;
-            $gmsRatings[] = round($stats['avg_rating'], 1);
-            $completionRates[] = round($stats['completion_rate'], 1);
+            $gmsRatings[] = round($stats['avg_rating'], 2);
+            $completionRates[] = round($stats['completion_rate'], 2);
             $projectCounts[] = $stats['total_projects'];
         }
 
@@ -423,27 +263,27 @@ class SubprojectsDashboard extends Component
         $categories = $fixedClusters;
         $series = [
             [
-                'name' => 'Excellent',
+                'name' => 'Excellent (≥85%)',
                 'data' => [],
                 'color' => '#10b981',
             ],
             [
-                'name' => 'Good',
+                'name' => 'Good (≥70%)',
                 'data' => [],
                 'color' => '#3b82f6',
             ],
             [
-                'name' => 'Fair',
+                'name' => 'Fair (≥55%)',
                 'data' => [],
                 'color' => '#f59e0b',
             ],
             [
-                'name' => 'Poor',
+                'name' => 'Poor (≥40%)',
                 'data' => [],
                 'color' => '#f97316',
             ],
             [
-                'name' => 'Critical',
+                'name' => 'Critical (<40%)',
                 'data' => [],
                 'color' => '#ef4444',
             ],
