@@ -50,53 +50,25 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {{-- ================= LEFT: CLUSTER PERFORMANCE ================= --}}
-        <div class="lg:col-span-2 space-y-4">
+        <div class="lg:col-span-2 rounded-xl border border-zinc-200/60 dark:border-zinc-800 bg-white dark:bg-zinc-900">
 
-            <div class="rounded-xl border border-zinc-200/60 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-
-                <div class="p-4 border-b border-zinc-200/60 dark:border-zinc-800">
-                    <div class="flex items-center gap-2 mb-1">
-                        <flux:icon name="chart-pie" class="w-4 h-4 text-zinc-900 dark:text-white" />
-                        <div class="text-sm font-semibold text-zinc-900 dark:text-white">
-                            Cluster Performance
-                        </div>
-                    </div>
-                    <div class="text-xs text-zinc-500">
-                        GMS Rating (bars) vs Completion Rate (line)
+            <div class="p-4 border-b border-zinc-200/60 dark:border-zinc-800">
+                <div class="flex items-center gap-2 mb-1">
+                    <flux:icon name="chart-pie" class="w-4 h-4 text-zinc-900 dark:text-white" />
+                    <div class="text-sm font-semibold text-zinc-900 dark:text-white">
+                        Cluster Performance
                     </div>
                 </div>
-
-                <div class="p-4" wire:ignore>
-
-                    <div id="cluster-performance-chart"
-                        data-chart-data="{{ json_encode($chartData) }}"
-                        style="height: 270px;"></div>
+                <div class="text-xs text-zinc-500">
+                    GMS Rating (bars) vs Completion Rate (line)
                 </div>
-
             </div>
 
-            {{-- ================= RISK ASSESSMENT ================= --}}
-            <div class="rounded-xl border border-zinc-200/60 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+            <div class="p-4" wire:ignore>
 
-                <div class="p-4 border-b border-zinc-200/60 dark:border-zinc-800">
-                    <div class="flex items-center gap-2 mb-1">
-                        <flux:icon name="exclamation-triangle" class="w-4 h-4 text-zinc-900 dark:text-white" />
-                        <div class="text-sm font-semibold text-zinc-900 dark:text-white">
-                            Risk Assessment
-                        </div>
-                    </div>
-                    <div class="text-xs text-zinc-500">
-                        Project count by risk level
-                    </div>
-                </div>
-
-                <div class="p-4" wire:ignore>
-
-                    <div id="risk-assessment-chart"
-                        data-risk-data="{{ json_encode($riskChartData) }}"
-                        style="height: 270px;"></div>
-                </div>
-
+                <div id="cluster-performance-chart"
+                    data-chart-data="{{ json_encode($chartData) }}"
+                    style="height: 400px;"></div>
             </div>
 
         </div>
@@ -225,10 +197,7 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(() => {
-            renderClusterPerformanceChart();
-            renderRiskAssessmentChart();
-        }, 200);
+        setTimeout(renderClusterPerformanceChart, 200);
     });
 
     /* =========================
@@ -416,33 +385,33 @@
             },
 
             legend: {
-                layout: 'horizontal',
-                align: 'center',
-                verticalAlign: 'top',
-                floating: false,
+    layout: 'horizontal',
+    align: 'center',
+    verticalAlign: 'top',
+    floating: false,
 
-                // 🔥 remove heavy container look
-                backgroundColor: 'transparent',
-                borderWidth: 0,
-                shadow: false,
+    // 🔥 remove heavy container look
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    shadow: false,
 
-                itemStyle: {
-                    color: theme.textColor,
-                    fontWeight: '500',
-                    fontSize: '13px'
-                },
+    itemStyle: {
+        color: theme.textColor,
+        fontWeight: '500',
+        fontSize: '13px'
+    },
 
-                itemHoverStyle: {
-                    color: isDarkMode() ? '#ffffff' : '#111827'
-                },
+    itemHoverStyle: {
+        color: isDarkMode() ? '#ffffff' : '#111827'
+    },
 
-                itemMarginTop: 4,
-                itemMarginBottom: 4,
+    itemMarginTop: 4,
+    itemMarginBottom: 4,
 
-                symbolRadius: 6, // rounded legend marker
-                symbolHeight: 10,
-                symbolWidth: 10
-            },
+    symbolRadius: 6, // rounded legend marker
+    symbolHeight: 10,
+    symbolWidth: 10
+},
             plotOptions: {
                 column: {
                     borderRadius: 10,
@@ -497,227 +466,10 @@
     }
 
     /* =========================
-       RISK ASSESSMENT CHART
-       ========================= */
-    function renderRiskAssessmentChart() {
-        const el = document.getElementById('risk-assessment-chart');
-        if (!el) return;
-
-        let raw;
-        try {
-            raw = JSON.parse(el.dataset.riskData || '{}');
-        } catch (e) {
-            console.error('Bad JSON for risk data');
-            return;
-        }
-
-        if (typeof Highcharts === 'undefined') return;
-
-        const theme = getThemeColors();
-
-        const existing = Highcharts.charts.find(c =>
-            c && c.renderTo && c.renderTo.id === 'risk-assessment-chart'
-        );
-        if (existing) existing.destroy();
-
-        Highcharts.chart('risk-assessment-chart', {
-
-            chart: {
-                type: 'bar',
-                backgroundColor: 'transparent',
-                style: {
-                    fontFamily: 'Inter, system-ui, sans-serif'
-                },
-                spacingTop: 5,
-                spacingBottom: 5,
-                spacingLeft: 5,
-                spacingRight: 5
-            },
-
-            title: {
-                text: null
-            },
-
-            /* =========================
-               CLEAN AXIS (MODERN UI STYLE)
-            ========================= */
-            xAxis: {
-                categories: raw.categories || [],
-                lineWidth: 0,
-                tickLength: 0,
-                title: {
-                    text: 'Cluster',
-                    style: {
-                        color: '#6b7280',
-                        fontSize: '12px',
-                        fontWeight: '600'
-                    }
-                },
-                labels: {
-                    style: {
-                        color: '#9ca3af',
-                        fontSize: '12px',
-                        fontWeight: '500'
-                    }
-                }
-            },
-
-            yAxis: {
-                min: 0,
-                title: {
-                    text: null
-                },
-                gridLineColor: '#f3f4f6',
-                title: {
-                    text: 'Number of Risks',
-                    style: {
-                        color: '#6b7280',
-                        fontSize: '12px',
-                        fontWeight: '600'
-                    }
-                },
-                labels: {
-                    style: {
-                        color: '#9ca3af',
-                        fontSize: '11px'
-                    }
-                }
-            },
-
-            /* =========================
-               MODERN TOOLTIP (CARD STYLE)
-            ========================= */
-            tooltip: {
-                useHTML: true,
-                backgroundColor: 'transparent',
-                borderWidth: 0,
-                shadow: false,
-                shared: true,
-                formatter: function() {
-
-                    let total = 0;
-                    let rows = '';
-
-                    this.points.forEach(p => {
-                        total += p.y;
-                        rows += `
-                        <div style="
-                            display:flex;
-                            justify-content:space-between;
-                            margin-top:4px;
-                            font-size:12px;
-                            color:#6b7280;
-                        ">
-                            <span>
-                                <span style="color:${p.color};font-weight:700;">●</span>
-                                ${p.series.name}
-                            </span>
-                            <b style="color:#111827">${p.y}</b>
-                        </div>
-                    `;
-                    });
-
-                    return `
-                    <div style="
-                        background:#fff;
-                        border:1px solid #e5e7eb;
-                        border-radius:12px;
-                        padding:10px 12px;
-                        box-shadow:0 10px 25px rgba(0,0,0,0.08);
-                        min-width:170px;
-                    ">
-                        <div style="
-                            font-size:12px;
-                            font-weight:600;
-                            color:#111827;
-                            margin-bottom:6px;
-                        ">
-                                ${this.points?.[0]?.key || this.points?.[0]?.category}
-                        </div>
-
-                        ${rows}
-
-                        <div style="
-                            margin-top:8px;
-                            padding-top:6px;
-                            border-top:1px solid #f3f4f6;
-                            display:flex;
-                            justify-content:space-between;
-                            font-size:12px;
-                        ">
-                            <span style="color:#6b7280">Total</span>
-                            <b style="color:#111827">${total}</b>
-                        </div>
-                    </div>
-                `;
-                }
-            },
-
-            /* =========================
-               MODERN LEGEND (MINIMAL)
-            ========================= */
-            legend: {
-                align: 'center',
-                verticalAlign: 'top',
-                itemStyle: {
-                    color: '#6b7280',
-                    fontWeight: '500',
-                    fontSize: '12px'
-                },
-                symbolRadius: 3,
-                itemMarginBottom: 4
-            },
-
-            /* =========================
-               STACKING + MODERN BARS
-            ========================= */
-            plotOptions: {
-                series: {
-                    stacking: 'normal',
-                    borderWidth: 0
-                },
-
-                bar: {
-                    borderRadius: 8,
-
-                    pointPadding: 0.10, // 👈 airy modern spacing
-                    groupPadding: 0.18,
-
-                    dataLabels: {
-                        enabled: true,
-                        inside: true,
-                        style: {
-                            textOutline: 'none',
-                            fontSize: '11px',
-                            fontWeight: '600',
-                            color: '#ffffff'
-                        },
-                        formatter: function() {
-                            return this.y > 0 ? this.y : '';
-                        }
-                    }
-                }
-            },
-
-            /* =========================
-               SERIES (UNCHANGED)
-            ========================= */
-            series: Array.isArray(raw.series) ? raw.series : [],
-
-            credits: {
-                enabled: false
-            }
-        });
-    }
-
-    /* =========================
        DARK MODE REACTIVE
-       ========================= */
+    ========================= */
     new MutationObserver(() => {
-        setTimeout(() => {
-            renderClusterPerformanceChart();
-            renderRiskAssessmentChart();
-        }, 150);
+        setTimeout(renderClusterPerformanceChart, 150);
     }).observe(document.documentElement, {
         attributes: true,
         attributeFilter: ['class']

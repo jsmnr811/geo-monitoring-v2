@@ -15,10 +15,10 @@
 
         <flux:sidebar.nav>
             <flux:sidebar.group :heading="__('Platform')" class="grid">
-                <flux:sidebar.item icon="chart-bar" :href="route('management-dashboard')"
+                {{-- <flux:sidebar.item icon="chart-bar" :href="route('management-dashboard')"
                     :current="request()->routeIs('management-dashboard')" wire:navigate>
                     {{ __('Management Dashboard') }}
-                </flux:sidebar.item>
+                </flux:sidebar.item> --}}
                 {{-- <flux:sidebar.item icon="layout-grid" :href="route('synced-albums')"
                     :current="request()->routeIs('synced-albums')" wire:navigate>
                     {{ __('Synced Albums') }}
@@ -179,6 +179,19 @@
 
     @livewireScripts
     @fluxScripts
+    <script>
+        console.log('Loading Highcharts...');
+        // Load Highcharts dynamically to ensure it's loaded
+        var script = document.createElement('script');
+        script.src = 'https://code.highcharts.com/highcharts.js';
+        script.onload = function() {
+            console.log('Highcharts loaded successfully');
+        };
+        script.onerror = function() {
+            console.error('Failed to load Highcharts');
+        };
+        document.head.appendChild(script);
+    </script>
 
 </body>
 

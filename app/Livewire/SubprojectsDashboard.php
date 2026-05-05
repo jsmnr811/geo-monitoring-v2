@@ -24,6 +24,8 @@ class SubprojectsDashboard extends Component
 
     public array $ratingDistribution = [];
 
+    public array $riskCountsByCluster = [];
+
     public function mount(): void
     {
         $this->fetchData();
@@ -37,6 +39,7 @@ class SubprojectsDashboard extends Component
         try {
             $this->data = SidlanProject::with(['annex', 'package', 'gmsAlbums', 'progress', 'justifications'])->get();
             $this->calculateStats();
+            $this->dispatch('refresh-chart');
         } catch (\Throwable $e) {
             Log::error('SubprojectsDashboard error: '.$e->getMessage());
             $this->error = 'Something went wrong. Please try again.';
@@ -113,6 +116,9 @@ class SubprojectsDashboard extends Component
             '80-100' => 0,
         ];
 
+        // Calculate risk counts by cluster
+        $this->riskCountsByCluster = [];
+
         foreach ($this->data as $project) {
             $rating = $this->computeGmsComplianceRating($project);
             if ($rating < 20) {
@@ -126,7 +132,26 @@ class SubprojectsDashboard extends Component
             } else {
                 $this->ratingDistribution['80-100']++;
             }
+
+            $cluster = $project->cluster ?? 'Unknown';
+            if (! isset($this->riskCountsByCluster[$cluster])) {
+                $this->riskCountsByCluster[$cluster] = [
+                    'excellent' => 0,
+                    'good' => 0,
+                    'fair' => 0,
+                    'poor' => 0,
+                    'critical' => 0,
+                ];
+            }
+
+            $riskLabel = strtolower($this->statusLabel($rating));
+            if (isset($this->riskCountsByCluster[$cluster][$riskLabel])) {
+                $this->riskCountsByCluster[$cluster][$riskLabel]++;
+            }
         }
+
+        // Sort clusters alphabetically
+        ksort($this->riskCountsByCluster);
 
         // Calculate overall stats
         $this->overallStats = [
@@ -145,6 +170,12 @@ class SubprojectsDashboard extends Component
         }
 
         try {
+            // Validate data types to prevent errors
+            if (! is_array($project->gmsAlbums->toArray())) {
+                \Log::warning('Invalid gmsAlbums data for project '.$spId);
+
+                return 0.0;
+            }
             // Fetch albums (eager loaded)
             $albums = $project->gmsAlbums->toArray();
 
@@ -152,7 +183,10 @@ class SubprojectsDashboard extends Component
             $progress = $project->progress;
 
             // Fetch justifications (eager loaded)
-            $justifications = $project->justifications->pluck('issue_type')->toArray();
+            $justifications = [];
+            if ($project->justifications) {
+                $justifications = $project->justifications->pluck('issue_type')->toArray();
+            }
 
             // Check album status
             $hasBasedPhotos = false;
@@ -176,13 +210,24 @@ class SubprojectsDashboard extends Component
                 'progress_months_with_sufficient_geotags' => 0,
             ];
 
-            if ($progress) {
+            if ($progress && isset($progress->accomplishment_dates) && is_array($progress->accomplishment_dates)) {
                 // Collect months with progress (only where actual > 0)
                 $progressMonths = [];
-                foreach (($progress->accomplishment_dates ?? []) as $date) {
+                foreach ($progress->accomplishment_dates as $date) {
+                    if (! is_string($date)) {
+                        continue;
+                    }
                     $month = date('Y-m', strtotime($date));
+                    if (! $month) {
+                        continue;
+                    }
+
                     $progressDate = $date;
-                    $report = $progress->progress_report[$progressDate] ?? [];
+                    $report = [];
+                    if (isset($progress->progress_report) && is_array($progress->progress_report)) {
+                        $report = $progress->progress_report[$progressDate] ?? [];
+                    }
+
                     $actualValue = $report['actual'] ?? 0;
                     if (is_numeric($actualValue) && $actualValue > 0) {
                         $progressMonths[$month] = true;
@@ -192,19 +237,24 @@ class SubprojectsDashboard extends Component
 
                 // Group albums by month
                 $groupedAlbums = [];
-                foreach ($albums as $album) {
-                    if (($album['sp_id'] ?? null) !== $spId) {
-                        continue;
+                if (is_array($albums)) {
+                    foreach ($albums as $album) {
+                        if (! is_array($album)) {
+                            continue;
+                        }
+                        if (($album['sp_id'] ?? null) !== $spId) {
+                            continue;
+                        }
+                        if (empty($album['report_date'])) {
+                            continue;
+                        }
+                        $timestamp = strtotime($album['report_date']);
+                        if (! $timestamp) {
+                            continue;
+                        }
+                        $monthKey = date('Y-m', $timestamp);
+                        $groupedAlbums[$monthKey][] = $album;
                     }
-                    if (empty($album['report_date'])) {
-                        continue;
-                    }
-                    $timestamp = strtotime($album['report_date']);
-                    if (! $timestamp) {
-                        continue;
-                    }
-                    $monthKey = date('Y-m', $timestamp);
-                    $groupedAlbums[$monthKey][] = $album;
                 }
 
                 // Check each progress month
@@ -329,11 +379,94 @@ class SubprojectsDashboard extends Component
             ];
         })->sortByDesc('total')->values()->all();
 
+        // Prepare data for Highcharts combination chart
+        $chartData = $this->prepareChartData();
+
+        // Prepare risk chart data
+        $riskChartData = $this->prepareRiskChartData();
+
         return view('livewire.subprojects-dashboard', [
             'clusterStats' => $this->clusterStats,
             'overallStats' => $this->overallStats,
             'ratingDistribution' => $this->ratingDistribution,
             'clusterBreakdown' => $clusterBreakdown,
+            'chartData' => $chartData,
+            'riskChartData' => $riskChartData,
         ]);
+    }
+
+    protected function prepareChartData(): array
+    {
+        $categories = [];
+        $gmsRatings = [];
+        $completionRates = [];
+        $projectCounts = [];
+
+        foreach ($this->clusterStats as $cluster => $stats) {
+            $categories[] = $cluster;
+            $gmsRatings[] = round($stats['avg_rating'], 1);
+            $completionRates[] = round($stats['completion_rate'], 1);
+            $projectCounts[] = $stats['total_projects'];
+        }
+
+        return [
+            'categories' => $categories,
+            'gmsRatings' => $gmsRatings,
+            'completionRates' => $completionRates,
+            'projectCounts' => $projectCounts,
+        ];
+    }
+
+    protected function prepareRiskChartData(): array
+    {
+        $fixedClusters = ['Luzon A', 'Luzon B', 'Visayas', 'Mindanao'];
+        $categories = $fixedClusters;
+        $series = [
+            [
+                'name' => 'Excellent',
+                'data' => [],
+                'color' => '#10b981',
+            ],
+            [
+                'name' => 'Good',
+                'data' => [],
+                'color' => '#3b82f6',
+            ],
+            [
+                'name' => 'Fair',
+                'data' => [],
+                'color' => '#f59e0b',
+            ],
+            [
+                'name' => 'Poor',
+                'data' => [],
+                'color' => '#f97316',
+            ],
+            [
+                'name' => 'Critical',
+                'data' => [],
+                'color' => '#ef4444',
+            ],
+        ];
+
+        foreach ($fixedClusters as $cluster) {
+            $risks = $this->riskCountsByCluster[$cluster] ?? [
+                'excellent' => 0,
+                'good' => 0,
+                'fair' => 0,
+                'poor' => 0,
+                'critical' => 0,
+            ];
+            $series[0]['data'][] = $risks['excellent'];
+            $series[1]['data'][] = $risks['good'];
+            $series[2]['data'][] = $risks['fair'];
+            $series[3]['data'][] = $risks['poor'];
+            $series[4]['data'][] = $risks['critical'];
+        }
+
+        return [
+            'categories' => $categories,
+            'series' => $series,
+        ];
     }
 }
