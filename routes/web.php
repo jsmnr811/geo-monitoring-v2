@@ -6,6 +6,7 @@ use App\Livewire\ManagementDashboard;
 use App\Livewire\SidlanData;
 use App\Livewire\SpAlbums;
 use App\Livewire\Subprojects;
+use App\Livewire\SubprojectsDashboard;
 use App\Livewire\SyncedAlbums;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/management-dashboard', ManagementDashboard::class)->name('management-dashboard');
     Route::get('/synced-albums/{spId?}', SyncedAlbums::class)->name('synced-albums');
     Route::get('/subprojects', Subprojects::class)->name('subprojects');
+    Route::get('/subprojects-dashboard', SubprojectsDashboard::class)->name('subprojects-dashboard');
 
     Route::get('/gms-compliance/{spId}', GmsCompliance::class)->name('gms-compliance');
     Route::get('/sp-data/{spId}', SpAlbums::class)->name('sp-albums');

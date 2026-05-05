@@ -27,6 +27,10 @@
                     :current="request()->routeIs('subprojects')" wire:navigate>
                     {{ __('Subprojects') }}
                 </flux:sidebar.item>
+                <flux:sidebar.item icon="chart-bar" :href="route('subprojects-dashboard')"
+                    :current="request()->routeIs('subprojects-dashboard')" wire:navigate>
+                    {{ __('Subprojects Dashboard') }}
+                </flux:sidebar.item>
                 <flux:sidebar.item
                     icon="command-line"
                     x-on:click="$flux.modal('sync-manager-modal').show()">
