@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class RunSyncJob implements ShouldQueue
 {
@@ -28,6 +29,19 @@ class RunSyncJob implements ShouldQueue
 
     public function handle()
     {
+        Log::info('QUEUE RUNTIME CHECK', [
+            'env' => app()->environment(),
+            'app_name' => config('app.name'),
+            'queue_default' => config('queue.default'),
+            'queue_connection_driver' => config('queue.connections.database.driver'),
+            'queue_connection_name' => config('queue.connections.database.connection'),
+            'queue_table' => config('queue.connections.database.table'),
+            'db_name' => DB::connection()->getDatabaseName(),
+            'php_sapi' => php_sapi_name(),
+            'cwd' => getcwd(),
+        ]);
+
+
         Log::info('RunSyncJob started', ['commands' => $this->commands, 'userId' => $this->userId]);
 
         foreach ($this->commands as $command) {
