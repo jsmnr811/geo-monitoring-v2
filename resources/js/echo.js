@@ -11,6 +11,8 @@ window.Echo = new Echo({
     wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
     forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
     enabledTransports: ['ws', 'wss'],
+
+    authEndpoint: `${import.meta.env.VITE_APP_URL}/broadcasting/auth`,
 });
 
 window.Echo.connector.pusher.connection.bind('connected', () => console.log('Echo connected to Reverb'));
