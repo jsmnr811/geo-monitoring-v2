@@ -27,23 +27,50 @@ class SyncSidlanProgress extends Command
         $count = 0;
 
         foreach ($response['data'] as $spIndex => $item) {
+            $existing = SidlanProgress::where('sp_index', $spIndex)->first();
 
-            SidlanProgress::updateOrCreate(
-                ['sp_index' => $spIndex],
-                [
-                    'actual_start_date' => $this->fixDate($item['actual_start_date'] ?? null),
-                    'target_completion_date' => $this->fixDate($item['target_completion_date'] ?? null),
+            $updates = [];
 
-                    'accomplishment_dates' => $item['accomplishmentDates'] ?? [],
+            // Only update if different or new
+            $newStartDate = $this->fixDate($item['actual_start_date'] ?? null);
+            if (! $existing || $existing->actual_start_date !== $newStartDate) {
+                $updates['actual_start_date'] = $newStartDate;
+            }
 
-                    'progress_report' => $item['progressReport'] ?? [],
-                ]
-            );
+            $newTargetDate = $this->fixDate($item['target_completion_date'] ?? null);
+            if (! $existing || $existing->target_completion_date !== $newTargetDate) {
+                $updates['target_completion_date'] = $newTargetDate;
+            }
 
-            $count++;
+            // For arrays, merge new values (assuming additive progress)
+            $newAccomplishmentDates = $item['accomplishmentDates'] ?? [];
+            if (! empty($newAccomplishmentDates)) {
+                $existingDates = $existing ? $existing->accomplishment_dates : [];
+                $mergedDates = array_unique(array_merge($existingDates, $newAccomplishmentDates));
+                if ($existingDates !== $mergedDates) {
+                    $updates['accomplishment_dates'] = $mergedDates;
+                }
+            }
+
+            $newProgressReport = $item['progressReport'] ?? [];
+            if (! empty($newProgressReport)) {
+                $existingReport = $existing ? $existing->progress_report : [];
+                $mergedReport = array_merge($existingReport, $newProgressReport); // New keys override old
+                if ($existingReport !== $mergedReport) {
+                    $updates['progress_report'] = $mergedReport;
+                }
+            }
+
+            if (! empty($updates)) {
+                SidlanProgress::updateOrCreate(
+                    ['sp_index' => $spIndex],
+                    $updates
+                );
+                $count++;
+            }
         }
 
-        $this->info("Progress sync completed: {$count} records");
+        $this->info("Progress sync completed: {$count} records updated");
 
         return 0;
     }
