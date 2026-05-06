@@ -12,13 +12,13 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class RunSyncJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public array $commands;
-
     public int $userId;
 
     public function __construct(array $commands, int $userId)
@@ -27,36 +27,73 @@ class RunSyncJob implements ShouldQueue
         $this->userId = $userId;
     }
 
-    public function handle()
+    public function handle(): void
     {
-        Log::info('QUEUE RUNTIME CHECK', [
+        Log::info('🚀 JOB STARTED', [
+            'user_id' => $this->userId,
+            'commands' => $this->commands,
             'env' => app()->environment(),
-            'app_name' => config('app.name'),
-            'queue_default' => config('queue.default'),
-            'queue_connection_driver' => config('queue.connections.database.driver'),
-            'queue_connection_name' => config('queue.connections.database.connection'),
-            'queue_table' => config('queue.connections.database.table'),
-            'db_name' => DB::connection()->getDatabaseName(),
-            'php_sapi' => php_sapi_name(),
-            'cwd' => getcwd(),
+            'queue' => $this->queue ?? 'default',
         ]);
 
-
-        Log::info('RunSyncJob started', ['commands' => $this->commands, 'userId' => $this->userId]);
-
         foreach ($this->commands as $command) {
-            $exitCode = Artisan::call($command);
 
-            if ($exitCode !== 0) {
-                broadcast(new SyncFailedEvent($this->userId, 'Sync failed'));
+            Log::info('▶ RUN COMMAND', ['command' => $command]);
 
-                return;
+            try {
+                $exitCode = Artisan::call($command);
+                $output = Artisan::output();
+
+                Log::info('✔ COMMAND RESULT', [
+                    'command' => $command,
+                    'exit_code' => $exitCode,
+                    'output' => $output,
+                ]);
+
+                if ($exitCode !== 0) {
+                    throw new \Exception("Command failed: {$command}");
+                }
+
+            } catch (Throwable $e) {
+
+                Log::error('❌ COMMAND ERROR', [
+                    'command' => $command,
+                    'error' => $e->getMessage(),
+                ]);
+
+                broadcast(new SyncFailedEvent(
+                    $this->userId,
+                    $e->getMessage()
+                ));
+
+                throw $e;
             }
         }
 
-        broadcast(new SyncSuccessEvent($this->userId, 'Sync completed successfully'));
+        Log::info('🎉 JOB SUCCESS');
 
-        // send browser event via database/echo/livewire later
-        cache()->put("sync_done_{$this->userId}", true, now()->addMinutes(5));
+        broadcast(new SyncSuccessEvent(
+            $this->userId,
+            'Sync completed successfully'
+        ));
+
+        cache()->put(
+            "sync_done_{$this->userId}",
+            true,
+            now()->addMinutes(5)
+        );
+    }
+
+    public function failed(Throwable $e): void
+    {
+        Log::error('💀 JOB FAILED', [
+            'user_id' => $this->userId,
+            'error' => $e->getMessage(),
+        ]);
+
+        broadcast(new SyncFailedEvent(
+            $this->userId,
+            $e->getMessage()
+        ));
     }
 }
